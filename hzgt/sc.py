@@ -1,0 +1,3 @@
+class SCError(Exception):
+    pass
+
