@@ -1,7 +1,7 @@
 # README.md ==>> hzgt
 - ### 1. 运行环境 & 函数调用
   - #### 1.1 运行环境
-    - python>=3.7
+    - python>=3.8
   - #### 1.2 函数调用例子
     ```
     from hzgt import *
