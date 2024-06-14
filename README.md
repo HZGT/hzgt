@@ -1,4 +1,9 @@
-# README.md ==>> hzgt
+# [目录](#正文)
+- ### [1. 运行环境 & 函数调用](#1.-运行环境-&-函数调用)
+- ### [2. 函数](#2.-函数)
+  - #### [2.0 查看函数帮助](#2.0-查看函数帮助)
+
+# 正文
 - ### 1. 运行环境 & 函数调用
   - #### 1.1 运行环境
     - python>=3.8
@@ -139,13 +144,14 @@
     # [class] Ftpclient
     ```
     - ##### 2.6.5 INI--2024.06.12
-    ```
-    该部分基于 python库ini-parser[版本1.2.1 / MIT许可] 修改 
-    This part is modified based on the python library ini-parser [version 1.2.1 / MIT license].
-  
-    详细内容可见: https://pypi.org/project/ini-parser/
-    Details are available here: https://pypi.org/project/ini-parser/
-    ```
+
+    > 该部分基于 python库ini-parser[版本1.2.1 / MIT许可] 修改 
+    > 
+    > This part is modified based on the python library ini-parser [version 1.2.1 / MIT license].
+    > 
+    > 详细内容可见: [ini-parser](https://pypi.org/project/ini-parser/)
+    > 
+    > Details are available here: [ini-parser](https://pypi.org/project/ini-parser/)
     ```python
     # [func] readini()
     ```
