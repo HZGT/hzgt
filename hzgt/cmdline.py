@@ -1,12 +1,14 @@
 import click
+import typing as t
 import click.formatting
 
+
 def wrap_text(
-    text: str,
-    width: int = 78,
-    initial_indent: str = "",
-    subsequent_indent: str = "",
-    preserve_paragraphs: bool = False,
+        text: str,
+        width: int = 78,
+        initial_indent: str = "",
+        subsequent_indent: str = "",
+        preserve_paragraphs: bool = False,
 ) -> str:
     """A helper function that intelligently wraps text.  By default, it
     assumes that it operates on a single paragraph of text but if the
@@ -85,7 +87,7 @@ import os
 from .CONST import CURRENT_USERNAME
 from .tools import getip, Ftpserver, Fileserver
 
-HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  #  让 -h 与 --help 功能一样
+HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  # 让 -h 与 --help 功能一样
 
 
 @click.group(context_settings=HELP_CTRL_SET_DICT)
@@ -98,6 +100,7 @@ def losf():
     ips 输出IP列表
     """
     pass
+
 
 @click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")  # epilog 末尾额外信息
 @click.argument('directory', default=os.getcwd(), type=click.STRING)
@@ -154,6 +157,7 @@ def ftps(directory, res, port, perm, user, password):
     fs.set_log()
     fs.start(res, port)
 
+
 @click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")
 @click.argument('directory', default=os.getcwd(), type=click.STRING, required=False)
 @click.option("-r", "--res", default=getip(-1), type=click.STRING, help="选填- IP地址", show_default=True)
@@ -169,6 +173,7 @@ def fs(directory, res, port):
     :param port: 端口
     """
     Fileserver(directory, res, port)
+
 
 @click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")
 @click.argument('index', nargs=1, type=click.INT, required=False, default=None)
@@ -187,7 +192,6 @@ def ips(index, ipv6):
 losf.add_command(ftps)
 losf.add_command(fs)
 losf.add_command(ips)
-
 
 if __name__ == "__main__":
     losf()

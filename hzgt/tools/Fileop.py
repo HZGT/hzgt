@@ -108,9 +108,10 @@ def getip(index: int = None, ipv6: bool = False) -> Union[str, List[str]]:
     if index is None:
         return addresses
     else:
-        if index < 0 or index >= len(addresses):
+        if index >= len(addresses):
             raise IndexError(f"索引超出范围, 最大索引为 {len(addresses)}")
         return addresses[index]
+
 
 def _ul_li_css(_ico_base64):
     return f"""
@@ -248,6 +249,7 @@ def _ul_li_css(_ico_base64):
     }}
     
 """
+
 
 def _ul_li_js():
     return """
@@ -404,6 +406,7 @@ def _ul_li_js():
 
     """
 
+
 def _list2ul_li(titlepath: str, _path: str, pathlist: list):
     """
     将列表转换为lu的li样式
@@ -434,9 +437,9 @@ def _list2ul_li(titlepath: str, _path: str, pathlist: list):
         if os.path.islink(fullname):
             displayname = name + "@"
         _r.append("<li><a href='%s' style='color: #000080;'>%s</a></li>"
-                % (urllib.parse.quote(linkname,
-                                      errors='surrogatepass'),
-                   html.escape(displayname, quote=False)))
+                  % (urllib.parse.quote(linkname,
+                                        errors='surrogatepass'),
+                     html.escape(displayname, quote=False)))
     return f"""
     <div id="rtpath">{_path}</div>
     <div class="header-container">
@@ -463,13 +466,17 @@ def _list2ul_li(titlepath: str, _path: str, pathlist: list):
         </div>
     </div>""", _r
 
+
 def _convert_favicon_to_base64():
     with open(os.path.join(os.path.dirname(__file__), 'favicon.ico'), 'rb') as f:
         data = f.read()
         b64_data = base64.b64encode(data).decode('utf-8')
     return b64_data
 
+
 num = 0
+
+
 class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def get_default_extensions_map():
@@ -486,8 +493,6 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self.extensions_map = self.get_default_extensions_map()
         super().__init__(*args, **kwargs)
-
-
 
     # def do_GET(self):
     #     path = self.translate_path(self.path)
@@ -607,13 +612,12 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-type", ctype)
             self.send_header("Content-Length", str(fs[6]))
             self.send_header("Last-Modified",
-                self.date_time_string(fs.st_mtime))
+                             self.date_time_string(fs.st_mtime))
             self.end_headers()
             return f
         except:
             f.close()
             raise
-
 
     # def send_head(self):
     #     path = self.translate_path(self.path)
@@ -750,8 +754,9 @@ def fix_path(_path):
             _path = _path + '/'
     return _path
 
+
 def Fileserver(path: str = ".", host: str = "", port: int = 5001,
-                bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
+               bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
     """
     快速构建文件服务器. 阻塞进程. 默认使用 HTTP
 
@@ -788,6 +793,3 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
 
     threading.Thread(target=httpd.serve_forever).start()
     return httpd
-
-
-

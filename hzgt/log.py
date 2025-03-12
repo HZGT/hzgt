@@ -1,10 +1,10 @@
 import logging
-import os.path
 from logging.handlers import RotatingFileHandler
+from typing import Optional
 
-from .strop import restrop
 from .Decorator import vargs
 from .fileop import ensure_file
+from .strop import restrop
 
 LOG_LEVEL_DICT = {
     0: logging.NOTSET,
@@ -40,7 +40,7 @@ LEVEL_NAME_DICT = {
 
 
 @vargs({"level": set(LOG_LEVEL_DICT.keys())})
-def set_log(name: str | None, logfilename: str, level: int = 2,
+def set_log(name: Optional[str], logfilename: str, level: int = 2,
             print_prefix: str = f'{restrop("[%(name)s %(asctime)s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s")}',
             file_prefix: str = '[%(name)s %(asctime)s] [%(levelname)s]\t%(message)s',
             datefmt: str = "%Y-%m-%d %H:%M:%S",
@@ -85,8 +85,6 @@ def set_log(name: str | None, logfilename: str, level: int = 2,
 
     logger.addHandler(stream)
     logger.addHandler(log_file)
-
-    logger._log(level, f"`{LEVEL_NAME_DICT[level]}`\t{os.path.abspath(logfilename)}", "")
 
     return logger
 

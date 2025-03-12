@@ -15,7 +15,7 @@ from .fileop import bit_conversion
 from .fileop import get_file_size
 
 # 装饰器 gettime获取函数执行时间
-from .Decorator import gettime, log_func, vargs
+from .Decorator import gettime, vargs
 
 # 文件 / github仓库 / 视频 下载
 from .download.download import downloadmain
@@ -29,7 +29,7 @@ __all__ = [
     "version",
     "pic", "restrop", "restrop_list",
     "bit_conversion", "get_file_size",
-    "gettime", "log_func", "vargs",
+    "gettime", "vargs",
     "downloadmain",
     "set_log"
 ]

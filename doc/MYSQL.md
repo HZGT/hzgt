@@ -1,6 +1,6 @@
 
 ---
-`类名[class name]: Mysqlop()`
+`类[class]: Mysqlop()`
 ---
 
 `Mysqlop` 是一个用于简化 `MySQL数据库操作` 的 Python 类，它封装了数据库连接、表管理、数据操作及权限控制等核心功能。以下将详细介绍该类的使用方法和内部机制。
@@ -45,7 +45,7 @@
 
 #### database management
 #### 数据库管理
-1. ·create_db(dbname, bool_autoselect=True)·
+1. `create_db(dbname, bool_autoselect=True)`
 - 功能：创建数据库
 - 参数：
   - `dbname`: 数据库名

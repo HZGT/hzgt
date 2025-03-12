@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import datetime
-import time
-import inspect
-import sys
-import traceback
 import logging
-import os
 from functools import wraps
 
-
 LOG_LEVEL = {
-        "debug": logging.DEBUG,
-        "info": logging.INFO,
-        "warning": logging.WARNING,
-        "error": logging.ERROR,
-        "critical": logging.CRITICAL
-    }
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL
+}
+
 
 def vargs(valid_params: dict):
     """
@@ -37,6 +32,7 @@ def vargs(valid_params: dict):
     :param valid_params: dict 键为 arg/kargs 名称，值为 有效值的集合/列表
 
     """
+
     def decorator(func):
         def find_original_function(f):
             if hasattr(f, '__wrapped__'):
@@ -69,7 +65,7 @@ def vargs(valid_params: dict):
     return decorator
 
 
-class IndentLogger:
+class __IndentLogger:
     def __init__(self):
         self.indent_level = 0
 
@@ -84,7 +80,8 @@ class IndentLogger:
             self.indent_level -= 1
 
 
-indent_logger = IndentLogger()
+indent_logger = __IndentLogger()
+
 
 @vargs({"precision": [i for i in range(0, 10)]})
 def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
@@ -94,6 +91,7 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
     :param date_format: 时间格式
     :return:
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             start_time = datetime.datetime.now()
@@ -118,97 +116,4 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
         return wrapper
 
     return decorator
-
-
-@vargs({"loglevel": {"debug", "info", "warning", "error", "critical"}})
-def log_func(loglevel="debug", encoding="utf-8", bool_raise_error=False):
-    """
-    使用方法：装饰器
-
-    在需要日志的函数前加 @timelog()
-
-    loglevel
-        * "debug": logging.DEBUG,
-        * "info": logging.INFO,
-        * "warning": logging.WARNING,
-        * "error": logging.ERROR,
-        * "critical": logging.CRITICAL
-
-    :param loglevel: str 日志等级
-    :param encoding: 编码方式 默认 UTF-8
-    :param bool_raise_error: 遇到 Error 是否使用 raise 报错
-    """
-
-    def _log(func):
-        logger = logging.getLogger(__name__)
-        logger.setLevel(LOG_LEVEL[loglevel])
-
-        # 控制台输出渠道
-        ch = logging.StreamHandler()
-        logger.addHandler(ch)
-
-        # 创建目录&.log文件
-        log_dir = os.path.join(os.getcwd(), "logs")
-        lt = time.localtime(time.time())
-        ymd = time.strftime('%Y%m%d', lt)
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        log_path = os.path.join(log_dir, ymd + ".log")
-
-        # 文件输出渠道
-        file_handler = logging.FileHandler(log_path, encoding=encoding)
-        logger.addHandler(file_handler)
-
-        def inner(*args, **kwargs):
-            frame = inspect.currentframe().f_back
-            info = {
-                "filename": frame.f_code.co_filename,
-                "function_name": frame.f_code.co_name,
-                "line_number": frame.f_lineno,
-                "total_lines": len(inspect.getsourcelines(frame.f_code))
-            }
-
-            formatter = logging.Formatter(
-                f'%(asctime)s -- [{info["filename"]}][{info["line_number"]}] -- %(levelname)s: %(message)s',
-                )
-
-            ch.setFormatter(formatter)
-            file_handler.setFormatter(formatter)
-
-            try:
-                res = func(*args, **kwargs)
-
-                if args and not kwargs:
-                    logger.info(f"{func.__name__} {args} -> {res}")
-                elif kwargs and not args:
-                    logger.info(f"{func.__name__} {kwargs} -> {res}")
-                elif args and kwargs:
-                    logger.info(f"{func.__name__} {args, kwargs} -> {res}")
-                else:
-                    logger.info(f"{func.__name__} -> {res}")
-
-                return res
-            except Exception as e:
-                errfs = traceback.extract_tb(sys.exc_info()[2])[-1]
-                errfile = errfs.filename
-                errline = errfs.lineno
-                err = f"[{errfile}][{errline}] -> {e.__class__.__name__}: {e}"
-                if args and not kwargs:
-                    logger.error(f"{func.__name__} {args} -- {err}")
-                elif kwargs and not args:
-                    logger.error(f"{func.__name__} {kwargs} -- {err}")
-                elif args and kwargs:
-                    logger.error(f"{func.__name__} {args, kwargs} -- {err}")
-                else:
-                    logger.error(f"{func.__name__} -- {err}")
-
-                if bool_raise_error:
-                    raise e
-                else:
-                    return err
-
-        return inner
-
-    return _log
-
 

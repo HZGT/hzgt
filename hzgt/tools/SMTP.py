@@ -17,6 +17,7 @@ from typing import Union, Iterable
 
 from ..log import set_log
 
+
 class Smtpop:
     """
     基于SMTPLib库封装, 提供SMTP邮件发送功能
@@ -40,7 +41,7 @@ class Smtpop:
         self.__server = None
         self.__recipients = []  # 收件人列表
         self.__msg = MIMEMultipart()  # 邮件信息
-        
+
         if logger is None:
             self.__logger = set_log("hzgt.smtp", os.path.join("logs", "smtp.log"), level=2)
         else:
@@ -352,7 +353,7 @@ class Imapop:
         return endt
 
     def search_mailid(self, sender: str = None, subject: str = None, recipient: str = None, sincedate: str = None,
-                    beforedate: str = None, status: str = None):
+                      beforedate: str = None, status: str = None):
         """
         搜索邮件
 
@@ -399,4 +400,3 @@ class Imapop:
         typ, msg_data = self.__imap.fetch(mail_id, '(RFC822)')
         msg = email.message_from_bytes(msg_data[0][1])
         return self.parse_email(msg)
-

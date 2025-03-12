@@ -16,6 +16,7 @@ def pic(*args, bool_header=False, bool_show=True):
 
     :param args: 不定数量
     :param bool_header: 是否显示列名
+    :param bool_show: 是否直接打印
     :return: list[tuple[Any, str, Any]] (变量名, 变量类型, 值) 不定数量
     """
 
