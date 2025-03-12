@@ -65,9 +65,6 @@
 * [API封装 API encapsulation](#api-encapsulation)
   * [MQTT](#class-mqtt)
   * [MYSQL](#class-mysql)
-* 
-* 
-* 
 
 
 # Operating environment
@@ -104,26 +101,6 @@ pip install hzgt
 
 * **MTSQL**
   - [Mysqldbop](#class-mysql)
-
-* **FTP**
-  - Ftpserver
-  - Ftpclient
-
-
-## [func]
-`函数`
-* **INI**
-  - readini
-  - saveini
-
-* **Other**
-  - pic
-  - restrop
-
-
-## [Decorator]
-`装饰器`
-- gettime
 
 ---
 
