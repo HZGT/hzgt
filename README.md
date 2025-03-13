@@ -140,7 +140,7 @@ The `Ftpserver` class provides the API of the `FTP server`.
 
 详见 [FTPS.md](doc/FTPS.md)
 
-## class smtpop
+## class Smtpop
 
 `类[class]: Smtpop()`
 
