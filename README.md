@@ -142,7 +142,7 @@ The `Ftpserver` class provides the API of the `FTP server`.
 
 ## class smtpop
 
-`类[class]: smtpop()`
+`类[class]: Smtpop()`
 
 `Smtpop` 类提供了便捷发送邮件的功能.
 
