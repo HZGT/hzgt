@@ -18,7 +18,7 @@
   * 函数[pic](#func-pic)
   * 函数[restrop](#func-restrop)
   * 函数[set_log](#func-setlog)
-  * 
+
   * 装饰器[vargs](#decorator-vargs)
 
 ------------------------------------------------------
