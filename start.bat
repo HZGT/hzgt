@@ -1,3 +1,3 @@
 git add .
-git commit -m "CHANGE README"
+git commit -m "FIXED MYSQL BUG"
 git push

@@ -122,7 +122,7 @@ class Mysqlop:
         """
         启动服务器连接
 
-        :return: 
+        :return:
         """
         try:
             self.__con = pymysql.connect(**self.__config, autocommit=False)
@@ -167,7 +167,7 @@ class Mysqlop:
             if bool_commit:
                 self.__con.commit()
             return self.__cur.fetchall()
-        except AttributeError:
+        except AttributeError as attrerr:
             self.__logger.error(f"MYSQL未登录, 无法执行SQL语句")
             raise Exception(f'MYSQL未登录, 无法执行SQL语句')
         except Exception as e:
@@ -425,7 +425,7 @@ class Mysqlop:
             sql = f"INSERT INTO {tablename} ({columns_str}) VALUES ({placeholders})"
 
         try:
-            self.__execute(sql)
+            self.__execute(sql, values)
             self.__logger.info(f"插入数据成功")
         except Exception as e:
             self.__logger.error(f"插入数据失败：{e.__class__.__name__}: {e}")
@@ -498,7 +498,7 @@ class Mysqlop:
             sql += f" WHERE {where_clause}"
 
         try:
-            self.__execute(sql)
+            self.__execute(sql, list(conditions.values()))
             self.__logger.info(f"删除数据成功")
         except Exception as e:
             self.__logger.error(f"删除数据失败: {e.__class__.__name__}: {e}")
@@ -523,7 +523,7 @@ class Mysqlop:
             sql += f" WHERE {where_clause}"
 
         try:
-            self.__execute(sql)
+            self.__execute(sql, list(update_values.values()) + list(conditions.values()))
             self.__logger.info(f"更新数据成功")
         except Exception as e:
             self.__logger.error(f"更新数据失败: {e.__class__.__name__}: {e}")

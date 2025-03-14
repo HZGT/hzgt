@@ -1,1 +1,5 @@
-__version__ = "2025.3.12"
+import time
+
+__version__ = time.strftime("%Y.%m.%d")
+
+
