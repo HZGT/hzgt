@@ -72,6 +72,10 @@ def set_log(name: Optional[str], logfilename: str, level: int = 2,
     # print("日志等级: " + restrop(f"{level}\t{LEVEL_NAME_DICT[level]}", f=2))
 
     logger = logging.getLogger(name)
+    # 检查是否已有处理器，避免重复添加
+    if logger.handlers:
+        return logger
+
     logger.setLevel(LOG_LEVEL_DICT[level])
 
     print_formatter = logging.Formatter(print_prefix, datefmt=datefmt)
