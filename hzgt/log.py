@@ -41,7 +41,7 @@ LEVEL_NAME_DICT = {
 
 @vargs({"level": set(LOG_LEVEL_DICT.keys())})
 def set_log(name: Optional[str], logfilename: str, level: int = 2,
-            print_prefix: str = f'{restrop("[%(name)s %(asctime)s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s")}',
+            print_prefix: str = f'{restrop("[%(name)s %(asctime)s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s", f=1)}',
             file_prefix: str = '[%(name)s %(asctime)s] [%(levelname)s]\t%(message)s',
             datefmt: str = "%Y-%m-%d %H:%M:%S",
             maxBytes: int = 2 * 1024 * 1024, backupCount: int = 3, encoding = "utf-8"):

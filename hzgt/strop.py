@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import sys
 import inspect
 
-from .sc import SCError
 from .CONST import STYLE
 from .Decorator import vargs
 
@@ -74,96 +72,102 @@ def pic(*args, bool_header=False, bool_show=True):
     return _temp_list
 
 
-@vargs({"m": {0, 1, 4, 5, 7, 8}, "f": {0, 1, 2, 3, 4, 5, 6, 7}, "b": {0, 1, 2, 3, 4, 5, 6, 7}})
-def restrop(text, m='', f=1, b=''):
+def is_valid_rgb_tuple(t):
     """
-    返回 颜色配置后的字符串
+    判断 t 是否为 RGB 元组
+    """
+    # 检查输入是否为RGB元组
+    if not isinstance(t, tuple):
+        return False
+    # 检查元组长度是否为3
+    if len(t) != 3:
+        return False
+    # 遍历每个元素进行检查
+    for num in t:
+        # 检查元素类型是否为整数（严格检查，排除布尔值）
+        if type(num) is not int:
+            return False
+        # 检查数值范围是否在0~255之间
+        if num < 0 or num > 255:
+            return False
+    return True
 
-    mode 模式
-        * 0  -  默认
-        * 1  -  高亮
-        * 4  -  下滑
-        * 5  -  闪烁
-        * 7  -  泛白
-        * 8  -  隐藏
 
-    fore 字体颜色 back 背景颜色
-        * 0  -  黑
-        * 1  -  红
-        * 2  -  绿
-        * 3  -  黄
-        * 4  -  蓝
-        * 5  -  紫
-        * 6  -  青
-        * 7  -  灰
+@vargs({"m": set(STYLE["mode"].keys()), "f": set(STYLE["fore"].keys()), "b": set(STYLE["back"].keys())})
+def restrop(text, m: int = 0, f: int = 1, b: int = 0,
+            frgb: tuple[int, int, int] = None, brgb: tuple[int, int, int] = None):
+    """
+    返回 颜色配置后的字符串.
+
+    当 `f` = 8 时, `frgb` 参数可用, 传入 RGB 颜色元组, 将配置RGB前景颜色
+
+    当 `b` = 8 时, `brgb` 参数可用, 传入 RGB 颜色元组, 将配置RGB背景颜色
+
+    m mode 模式
+        * 0  - 默认
+        * 1  - 粗体高亮
+        * 2  - 暗色弱化
+        * 3  - 斜体 (部分终端支持)
+        * 4  - 下滑线
+        * 5  - 缓慢闪烁 (未广泛支持，shell有效)
+        * 6  - 快速闪烁 (未广泛支持，shell有效)
+        * 7  - 反色
+        * 8  - 前景隐藏文本 (未广泛支持，shell有效)
+        * 9  - 删除线
+        * 21 - 双下划线 (部分终端支持)
+        * 52 - 外边框 [颜色随字体颜色变化] (部分终端支持)
+        * 53 - 上划线 (部分终端支持)
+
+    f fore 字体颜色
+    b back 背景颜色
+        * 0  - 黑
+        * 1  - 红
+        * 2  - 绿
+        * 3  - 黄
+        * 4  - 蓝
+        * 5  - 紫
+        * 6  - 青
+        * 7  - 灰
+        * 8  - 设置颜色功能
+        * 9  - 默认
 
     :param text: str
     :param m: mode 模式
     :param f: fore 字体颜色
     :param b: back 背景颜色
-    :return: str
+    :param frgb: RGB颜色数组, 当 f = 8 时有效, 用于RGB字体颜色显示
+    :param brgb: RGB颜色数组, 当 b = 8 时有效, 用于RGB字体颜色显示
+    :return: str 颜色配置后的字符串
     """
     try:
         str_mode = '%s' % STYLE['mode'][m] if STYLE['mode'][m] else ''
-        str_fore = '%s' % STYLE['fore'][f] if STYLE['fore'][f] else ''
-        str_back = '%s' % STYLE['back'][b] if STYLE['back'][b] else ''
+
+        if f == 8:
+            if not is_valid_rgb_tuple(frgb):
+                raise ValueError("`frgb` 不是有效的 RGB 颜色元组")
+            str_fore = '38;2;%d;%d;%d' % (frgb[0], frgb[1], frgb[2])
+        else:
+            str_fore = '%s' % STYLE['fore'][f] if STYLE['fore'][f] else ''
+
+        if b == 8:
+            if not is_valid_rgb_tuple(brgb):
+                raise ValueError("`brgb` 不是有效的 RGB 颜色元组")
+            str_back = '48;2;%d;%d;%d' % (brgb[0], brgb[1], brgb[2])
+        else:
+            str_back = '%s' % STYLE['back'][b] if STYLE['back'][b] else ''
+
+    except ValueError as err:
+        raise Exception(str(err) + "  请检查 `frgb` `brgb`参数输入") from None
+    except KeyError as err:
+        raise Exception(str(err) + "  请检查 `m` `f` `b` 参数输入") from None
     except Exception as err:
-        raise SCError(err, "请检查参数输入") from None
+        raise Exception(str(err) + "  请检查参数输入") from None
 
     style = ';'.join([s for s in [str_mode, str_fore, str_back] if s])
     style = '\033[%sm' % style if style else ''
-    end = '\033[%sm' % STYLE['default']['end'] if style else ''
+    end = '\033[%sm' % STYLE['end'][0] if style else ''
 
     return '%s%s%s' % (style, text, end)
-
-
-def restrop_list(str_list: list, mfb_list: list):
-    """
-    返回 字符串列表进行颜色配置后的字符串\n
-    (m, f, b)进行颜色配置\n
-    ()表示不进行颜色配置
-
-    + mode 模式简记
-        * 0 默认
-        * 1 高亮
-        * 4 下滑
-        * 5 闪烁
-        * 7 泛白
-        * 8 隐藏
-
-    + fore back 颜色简记
-        * 0 黑
-        * 1 红
-        * 2 绿
-        * 3 黄
-        * 4 蓝
-        * 5 紫
-        * 6 青
-        * 7 灰
-
-    args:
-        from hzgt import restrop_list
-
-        p = restrop_list(['欢迎', '来到', '我', '的世界'], [(0, 1, 0), (0, 2, 0), (0, 7, 0), (1, 2, 0)])
-
-        print(p)
-
-    :param str_list: 字符串列表
-    :param mfb_list: 颜色配置列表
-    :return: _str: 经过颜色配置后的字符串
-    """
-    _str = ''
-    for s, mfb in zip(str_list, mfb_list):
-        if mfb == () or mfb == -1:
-            _str = _str + s
-            continue
-        if type(mfb) == int:
-            _str = _str + restrop(s, f=mfb)
-            continue
-        _str = _str + restrop(s, m=mfb[0], f=mfb[1], b=mfb[2])
-    if len(str_list) > len(mfb_list):
-        _str = _str + ''.join(str_list[len(mfb_list):])
-    return _str
 
 
 def reputstr(string, length=0):

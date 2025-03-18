@@ -6,7 +6,7 @@ from .__version import __version__
 version = __version__
 
 # 字符串操作
-from .strop import pic, restrop, restrop_list
+from .strop import pic, restrop
 
 # 字节单位转换
 from .fileop import bit_conversion
@@ -27,7 +27,7 @@ from .log import set_log
 
 __all__ = [
     "version",
-    "pic", "restrop", "restrop_list",
+    "pic", "restrop",
     "bit_conversion", "get_file_size",
     "gettime", "vargs",
     "downloadmain",
