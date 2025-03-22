@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from ..strop import restrop
-from ..sc import SCError
 
 
 class Func_Register(dict):
@@ -24,7 +23,7 @@ class Func_Register(dict):
         """
         def add_item(key, value):
             if not callable(value):
-                raise SCError(f'{restrop("Error:")} {value} 必须是可调用的!')
+                raise ValueError(f'{restrop("Error:")} {value} 必须是可调用的!')
             if key in self._dict:
                 print(f'{restrop("Warning:", f=3)} {value.__name__} 已存在，将被覆盖!')
             self[key] = value
@@ -79,7 +78,7 @@ class Class_Register(dict):
 
     def __setitem__(self, key, value):
         if not callable(value):
-            raise SCError(f'注册器的值必须是可调用的! 值: {value}')
+            raise ValueError(f'注册器的值必须是可调用的! 值: {value}')
         if key is None:
             key = value.__name__
         if key in self._dict:

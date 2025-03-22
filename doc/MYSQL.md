@@ -3,7 +3,7 @@
 `类[class]: Mysqlop()`
 ---
 
-`Mysqlop` 是一个用于简化 `MySQL数据库操作` 的 Python 类，它封装了数据库连接、表管理、数据操作及权限控制等核心功能。以下将详细介绍该类的使用方法和内部机制。
+`Mysqlop` 是一个用于简化 `MySQL数据库操作` 的 Python 类, 它封装了数据库连接、表管理、数据操作及权限控制等核心功能. 以下将详细介绍该类的使用方法和内部机制. 
 
 `Mysqlop` is a Python class for simplifying `MySQL database operations`, which encapsulates core functionalities such as connection management, table operations, data manipulation, and privilege control. The following describes in detail how to use the Mysqlop class and how it works.
 
@@ -21,36 +21,36 @@
 
 ### constructor parameters
 ### 构造函数参数[Constructor Parameters]
-- `host`: MySQL 服务器地址（必填），例如 "localhost"
-- `port`: MySQL 服务器端口（必填），例如 3306
-- `user`: 数据库用户名（必填）
-- `passwd`: 数据库密码（必填）
-- `charset`: 字符编码（默认 "utf8"）
-- `logger`: 自定义日志记录器。若未提供，将自动创建默认日志（保存至 logs/mysql.log）
+- `host`: MySQL 服务器地址(必填), 例如 "localhost"
+- `port`: MySQL 服务器端口(必填), 例如 3306
+- `user`: 数据库用户名(必填)
+- `passwd`: 数据库密码(必填)
+- `charset`: 字符编码(默认 "utf8")
+- `logger`: 自定义日志记录器. 若未提供, 将自动创建默认日志(保存至 logs/mysql.log)
 
 ### core methods
 ### 核心方法[Core Methods]
 #### connect and disconnect
 #### 连接与断开
 1. `start()` / `connect()`
-- 功能：建立数据库连接
-- 日志提示：
-  - 成功：MYSQL数据库连接成功
-  - 失败：抛出连接异常（如认证失败、网络错误）
+- 功能:  建立数据库连接
+- 日志提示:  
+  - 成功:  MYSQL数据库连接成功
+  - 失败:  抛出连接异常(如认证失败、网络错误)
 
 2. `close()`
-- 功能：关闭数据库连接
-- 日志提示：
+- 功能:  关闭数据库连接
+- 日志提示:  
   - MYSQL数据库连接已关闭
 
 #### database management
 #### 数据库管理
 1. `create_db(dbname, bool_autoselect=True)`
-- 功能：创建数据库
-- 参数：
+- 功能:  创建数据库
+- 参数:  
   - `dbname`: 数据库名
   - `bool_autoselect`: 创建后自动选择该数据库
-- 示例：
+- 示例:  
   ```python
   from hzgt.tools import Mysqlop
   
@@ -60,28 +60,28 @@
   ```
 
 2. `drop_db(dbname)`
-- 功能：删除指定数据库
-- 示例：
+- 功能:  删除指定数据库
+- 示例:  
   ```
   mysql.drop_db("test_db")
   ```
 
 3. `select_db(dbname)`
-- 功能：选择指定数据库
-- 示例：
+- 功能:  选择指定数据库
+- 示例:  
   ```
   mysql.select_db("test_db")
   ```
     
 4. `get_all_db()`
-- 功能：获取所有数据库名称
-- 示例：
+- 功能:  获取所有数据库名称
+- 示例:  
   ```
   print(mysql.get_all_db())
   ```
 5. `get_all_nonsys_db()`
-- 功能：获取所有非系统数据库名称
-- 示例：
+- 功能:  获取所有非系统数据库名称
+- 示例:  
   ```
   print(mysql.get_all_nonsys_db())
   ```
@@ -89,13 +89,13 @@
 #### table operations
 #### 表操作
 1. create_table(tablename, attr_dict, primary_key=None, bool_id=True)
-- 功能：创建数据表 
-- 参数：
-  - `attr_dict`: 字段定义字典（格式：{"字段名": "数据类型"}）
-  - `primary_key:` 主键列表（默认自动添加id字段为主键）
+- 功能:  创建数据表 
+- 参数:  
+  - `attr_dict`: 字段定义字典(格式:  {"字段名": "数据类型"})
+  - `primary_key:` 主键列表(默认自动添加id字段为主键)
   - `bool_id`: 是否自动添加自增ID字段
 - 字典的值详见[支持的数据类型](#supported-data-types)
-- 示例：
+- 示例:  
   ```
   fields = {
       "name": "VARCHAR(50)",
@@ -106,29 +106,29 @@
   ```
 
 2. `drop_table(tablename)`
-- 功能：删除指定数据表
-- 示例：
+- 功能:  删除指定数据表
+- 示例:  
   ```
   mysql.drop_table("users")
   ```
 
 3. `get_tables(dbname)`
-- 功能：获取指定数据库的所有数据表名称
-- 示例：
+- 功能:  获取指定数据库的所有数据表名称
+- 示例:  
   ```
   mysql.get_tables("test_db")
   ```
 
 4. `get_table_index(tablename)`
-- 功能：获取指定数据表的索引信息
-- 示例：
+- 功能:  获取指定数据表的索引信息
+- 示例:  
   ```
   mysql.get_table_index("users")
   ```
     
 5. `select_table(tablename)`
-- 功能：选择指定数据表
-- 示例：
+- 功能:  选择指定数据表
+- 示例:  
   ```
   mysql.select_table("users")
   ```
@@ -136,33 +136,40 @@
 #### data operations
 #### 数据操作
 1. `insert(tablename, record, ignore_duplicates=False)`
-- 功能：插入单条数据
-- 参数：
-  - `record`: 数据字典（{"字段": 值}）
+- 功能:  插入单条数据
+- 参数:  
+  - `record`: 数据字典({"字段": 值})
   - `ignore_duplicates`: 是否忽略重复数据
-- 示例：
+- 示例:  
   ```
   data = {"name": "Alice", "age": 30}
   mysql.insert("users", data)
   ```
 
 2. `select(tablename, conditions=None, fields=None, order=None)`
-- 功能：查询数据
-- 参数：
-  - `conditions`: 条件字典（{"age": 30}）
-  - `fields`: 返回字段列表（默认所有字段）
-  - `order`: 排序规则（{"create_time": "DESC"}）
+- 功能:  查询数据
+- 参数:  
+  - `conditions`: 条件字典, 键为列名, 值为str 或 [操作符](#operators-map),  例如: 
+    ```
+    {
+      "creat_at": {">=": "2023-01-01", "<": "2023-02-01"},
+      "status": "active",
+      "age": {">": 18, "<": 30}
+    }
+    ```
+  - `fields`: 返回字段列表(默认所有字段)
+  - `order`: 排序规则({"create_time": "DESC"})
 
 3. `update(tablename, update_values, conditions)`
-- 功能：更新符合条件的数据
-- 示例：
+- 功能:  更新符合条件的数据
+- 示例:  
   ```
   mysql.update("users", {"age": 31}, {"name": "Alice"})
   ```
   
 4. `delete(tablename, conditions)`
-- 功能：删除符合条件的数据
-- 示例：
+- 功能:  删除符合条件的数据
+- 示例:  
   ```
   mysql.delete("users", {"name": "Alice"})
   ```
@@ -170,11 +177,11 @@
 #### permission management
 #### 权限管理
 1. `change_passwd(username, new_password, host="localhost")`
-- 功能：修改用户密码
+- 功能:  修改用户密码
 
 2. `get_curuser_permissions()`
-- 功能：获取当前用户权限
-- 返回格式：
+- 功能:  获取当前用户权限
+- 返回格式:  
 {
     '\*.\*': ['USAGE'],
     'test_db.\*': ['SELECT', 'INSERT']
@@ -230,16 +237,16 @@ print(results)
 ### Important Notes
 ### 注意事项
 - `字符集兼容性`
-建库时默认使用 utf8 字符集，确保与现有系统兼容
+建库时默认使用 utf8 字符集, 确保与现有系统兼容
 
 - `事务管理`
-默认关闭自动提交（**autocommit=False**），需手动执行 ```self.__con.commit()```
+默认关闭自动提交(**autocommit=False**), 需手动执行 ```self.__con.commit()```
 
 - `线程安全`
-每个实例应在独立线程中使用，避免多线程共享连接
+每个实例应在独立线程中使用, 避免多线程共享连接
 
 - `错误处理`
-操作失败时**自动回滚事务**，需在代码中捕获异常：
+操作失败时**自动回滚事务**, 需在代码中捕获异常:  
   ```
   try:
       mysql.insert(...)
@@ -276,6 +283,18 @@ print(results)
 | ENUM      | 枚举类型      |
 | SET       | 集合类型      |
 | JSON      | JSON 数据类型 |
+
+### operators map
+### 操作符对照表[Operators Map]
+|    操作符     |   描述    |
+|:----------:|:-------:|
+| `=`, `==`  |   等于    |
+| `!=`, `<>` |   不等于   |
+| `>`, `>=`  | 大于/大于等于 |
+| `<`, `<=`  | 小于/小于等于 |
+|   `LIKE`   |  模糊匹配   |
+|    `IN`    |  集合匹配   |
+| `BETWEEN`  |  范围匹配   |
 
 ### supported data types
 ### 权限对照表[Privilege Codes]

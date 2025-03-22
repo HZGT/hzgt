@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import datetime
 import os
 import re
 from logging import Logger
@@ -88,6 +89,24 @@ PRIVILEGE_TRANSLATION = {
     'ALL PRIVILEGES': '所有权限',
 }
 
+AVAILABLE_OPERATORS = {
+            ">": ">",
+            ">=": ">=",
+            "<": "<",
+            "<=": "<=",
+            "=": "=",
+            "!=": "!=",
+            "LIKE": "LIKE",  # 模糊查询
+            "IN": "IN",  # 在范围内
+            "BETWEEN": "BETWEEN",  # 范围查询
+
+            "$gt": ">",
+            "$gte": ">=",
+            "$lt": "<",
+            "$lte": "<=",
+            "$eq": "=",
+            "$ne": "!=",
+        }
 
 class Mysqlop:
     def __init__(self, host: str, port: int, user: str, passwd: str, charset: str = "utf8", logger: Logger = None):
@@ -150,7 +169,7 @@ class Mysqlop:
             self.__cur = None
             self.__logger.info(f"MYSQL数据库连接已关闭")
 
-    def __execute(self, sql: str, args: tuple = None, bool_commit: bool = True):
+    def __execute(self, sql: str, args = None, bool_commit: bool = True):
         """
         执行sql语句
 
@@ -355,7 +374,7 @@ class Mysqlop:
                 raise ValueError("列名只能包含字母、数字和下划线.")
             data_type = data_type.upper()
 
-            # 验证数据类型是否有效，考虑带参数的数据类型
+            # 验证数据类型是否有效, 考虑带参数的数据类型
             match = re.match(r'(' + '|'.join(VALID_MYSQL_DATA_TYPES) + ')', data_type)
             if not match:
                 self.__logger.error(f"{data_type}不是有效的MySQL数据类型")
@@ -397,18 +416,18 @@ class Mysqlop:
         """
         插入数据
 
-        :param tablename: 数据库表名，如果未提供则使用当前选择的表
-        :param record: 需要插入的数据，格式为字典 {列名: 值}
-        :param ignore_duplicates: 是否忽略重复数据（如果数据已存在，是否跳过插入）
+        :param tablename: 数据库表名, 如果未提供则使用当前选择的表
+        :param record: 需要插入的数据, 格式为字典 {列名: 值}
+        :param ignore_duplicates: 是否忽略重复数据（如果数据已存在, 是否跳过插入）
         :return: 无返回值
         """
         if not record:
-            self.__logger.error("插入数据失败：record 参数不能为空")
+            self.__logger.error("插入数据失败: record 参数不能为空")
             raise ValueError("record 参数不能为空")
 
         tablename = tablename or self.__selected_table
         if not tablename:
-            self.__logger.error("插入数据失败：未选择表名")
+            self.__logger.error("插入数据失败: 未选择表名")
             raise ValueError("未选择表名")
 
         columns = list(record.keys())
@@ -428,52 +447,97 @@ class Mysqlop:
             self.__execute(sql, values)
             self.__logger.info(f"插入数据成功")
         except Exception as e:
-            self.__logger.error(f"插入数据失败：{e.__class__.__name__}: {e}")
-            raise Exception(f"插入数据失败：{e.__class__.__name__}: {e}") from None
+            self.__logger.error(f"插入数据失败: {e.__class__.__name__}: {e}")
+            raise Exception(f"插入数据失败: {e.__class__.__name__}: {e}") from None
 
-    def select(self, tablename: str = '', conditions: dict = None, order: dict = '', fields=None):
+    def select(self, tablename: str = "", conditions: dict = None, order: dict = None, fields=None):
         """
         查询数据
 
-        :param tablename: 数据库表名. 如果未提供此参数或参数为空, 函数将使用 self.__selected_table 作为默认的表名
-        :param conditions: 指定查询的条件. 键是表中的列名, 值是用于匹配的条件值. 例如: {"age": 30, "gender": "male"}意味着查询age为30且gender为"male"的记录.
-        :param order: 指定查询结果的排序方式，格式为字典，键为列名，值为""（升序）、"DESC"（降序）或"ASC"（升序）
-        :param fields: 用于指定查询结果中包含的列. 默认值'*'表示查询所有列. 如果提供一个列表, 如["name", "age"], 则只查询name和age这两列.
-        :return: 返回查询到的数据
+        :param tablename: 数据库表名.默认使用 self.__selected_table.
+        :param conditions: 查询条件, 支持操作符: `>`、`>=`、`<`、`<=`、`=`、`!=`、`LIKE`、`IN`、`BETWEEN`.
+            例如: 
+            {
+                "creat_at": {">=": "2023-01-01", "<": "2023-02-01"},
+                "status": "active",
+                "age": {">": 18, "<": 30}
+            }
+        :param order: 排序方式, 如 {"timestamp": "DESC"}.
+        :param fields: 返回字段, 默认所有字段.
+        :return: 查询结果.
         """
         if fields is None:
             fields = ['*']
         tablename = tablename or self.__selected_table
-
         conditions = conditions or {}
-        where_clause_parts = []
-        for k in conditions:
-            value = conditions[k]
-            if isinstance(value, str):
-                # 根据实际情况决定是否转义
-                where_clause_parts.append(f"`{k}` = '{value}'")
-            else:
-                where_clause_parts.append(f"`{k}` = {value}")
-        where_clause = ' AND '.join(where_clause_parts)
+        order = order or {}
 
-        if not isinstance(fields, list) or (fields != ['*'] and not all(isinstance(f, str) for f in fields)):
-            self.__logger.error("fields参数无效, 应为'*'或者字符串列表")
-            raise ValueError("fields参数应该为'*'或者字符串列表")
-        fields_clause = ', '.join(fields) if isinstance(fields, list) and fields != ['*'] else '*'
+        def _format_value(v):
+            """处理时间戳和字符串转义"""
+            if isinstance(v, datetime.datetime):
+                # 将 datetime 对象转为标准格式字符串
+                return f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'"
+            elif v is None:
+                return 'NULL'
+            elif isinstance(v, str):
+                escaped = v.replace("'", "''")
+                return f"'{escaped}'"
+            elif isinstance(v, (int, float)):
+                return str(v)
+            else:
+                return str(v)
+
+        where_clause_parts = []
+        for column, value in conditions.items():
+            if isinstance(value, dict):
+                # 处理操作符条件（如 {">": 100}）
+                conditions_list = []
+                for op, op_value in value.items():
+                    # 检查操作符是否合法
+                    sql_op = AVAILABLE_OPERATORS.get(op.upper() if op.startswith("$") else op)
+                    if not sql_op:
+                        raise ValueError(f"无效操作符: {op}, 可用的操作符为: {list(AVAILABLE_OPERATORS.keys())}")
+
+                    # 处理特殊操作符
+                    if sql_op == "BETWEEN":
+                        if not isinstance(op_value, (list, tuple)) or len(op_value) != 2:
+                            raise ValueError("BETWEEN 需要两个值的列表, 如 [start, end]")
+                        val1 = _format_value(op_value[0])
+                        val2 = _format_value(op_value[1])
+                        conditions_list.append(f"`{column}` BETWEEN {val1} AND {val2}")
+                    elif sql_op == "IN":
+                        if not isinstance(op_value, (list, tuple)):
+                            raise ValueError("IN 需要列表或元组")
+                        formatted_values = [_format_value(v) for v in op_value]
+                        conditions_list.append(f"`{column}` IN ({', '.join(formatted_values)})")
+                    else:
+                        # 常规操作符（如 >、>= 等）
+                        formatted_value = _format_value(op_value)
+                        conditions_list.append(f"`{column}` {sql_op} {formatted_value}")
+
+                # 合并同一字段的多个条件（如 > 20 AND < 40）
+                where_clause_parts.append(f"({' AND '.join(conditions_list)})")
+            else:
+                # 简单等值条件（如 "status": "active"）
+                formatted_value = _format_value(value)
+                where_clause_parts.append(f"`{column}` = {formatted_value}")
+
+        # 构建 SQL
+        fields_clause = ", ".join(fields) if fields != ['*'] else '*'
         sql = f"SELECT {fields_clause} FROM {tablename}"
-        if conditions:
-            sql += f" WHERE {where_clause}"
+        if where_clause_parts:
+            sql += f" WHERE {' AND '.join(where_clause_parts)}"
         if order:
-            order_clause_parts = []
-            for col, direction in order.items():
-                if direction not in ["", "DESC", "ASC"]:
-                    self.__logger.error(f"无效的排序方向 '{direction}'，应为''、'DESC'或'ASC'")
-                    raise ValueError(f"无效的排序方向 '{direction}'，应为''、'DESC'或'ASC'")
-                order_clause_parts.append(f"`{col}` {direction}")
-            order_clause = ', '.join(order_clause_parts)
-            sql += f" ORDER BY {order_clause}"
+            order_clauses = []
+            for col, dir in order.items():
+                dir = dir.upper() if dir else "ASC"
+                if dir not in ("ASC", "DESC"):
+                    raise ValueError("排序方向必须是 ASC 或 DESC")
+                order_clauses.append(f"`{col}` {dir}")
+            sql += f" ORDER BY {', '.join(order_clauses)}"
 
         try:
+            print(sql)
             result = self.__execute(sql)
             self.__logger.info(f"查询数据成功")
             return result
@@ -586,7 +650,7 @@ class Mysqlop:
         """
         查询当前用户的权限信息
 
-        :return: 字典. 键为数据库名（如 '*.*', 'dbname.*'），值为权限列表（如 ['SELECT', 'INSERT']）
+        :return: 字典. 键为数据库名（如 '*.*', 'dbname.*'）, 值为权限列表（如 ['SELECT', 'INSERT']）
         """
         # SQL语句用于查询当前用户的权限
         # SHOW GRANTS FOR CURRENT_USER() 显示当前用户的权限
@@ -594,9 +658,9 @@ class Mysqlop:
 
         def parse_grants(_grants: list[str]):
             """
-            解析GRANT语句，返回按数据库分类的权限字典
+            解析GRANT语句, 返回按数据库分类的权限字典
 
-            :param _grants: GRANT语句列表，如 ['GRANT USAGE ON *.* TO ...', 'GRANT SELECT ON db.* TO ...']
+            :param _grants: GRANT语句列表, 如 ['GRANT USAGE ON *.* TO ...', 'GRANT SELECT ON db.* TO ...']
             :return: { '数据库名': [权限1, 权限2], ... }
             """
             permissions = {}

@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 
 import urllib.request
-
-from .sc import SCError
-
 
 
 def bit_conversion(fsize: int):
@@ -44,7 +40,7 @@ def __get_dir_size(dirpath: str):
         size = os.path.getsize(dirpath)
         return size
     else:
-        raise SCError("目录/文件 不存在")
+        raise NotADirectoryError("目录/文件 不存在")
 
 
 def get_file_size(filepath: str):
@@ -60,6 +56,7 @@ def get_file_size(filepath: str):
         response = urllib.request.urlopen(filepath)
         fsize = int(response.headers["Content-Length"])
     return bit_conversion(fsize)
+
 
 def ensure_file(file_path: str) -> None:
     """
