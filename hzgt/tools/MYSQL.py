@@ -90,23 +90,14 @@ PRIVILEGE_TRANSLATION = {
 }
 
 AVAILABLE_OPERATORS = {
-            ">": ">",
-            ">=": ">=",
-            "<": "<",
-            "<=": "<=",
-            "=": "=",
-            "!=": "!=",
-            "LIKE": "LIKE",  # 模糊查询
-            "IN": "IN",  # 在范围内
-            "BETWEEN": "BETWEEN",  # 范围查询
+    '>': '>', '<': '<', '>=': '>=', '<=': '<=',
+    '=': '=', '!=': '!=',
+    'LIKE': 'LIKE', 'IN': 'IN', 'BETWEEN': 'BETWEEN',
+    '$gt': '>', '$lt': '<', '$gte': '>=', '$lte': '<=',
+    '$eq': '=', '$ne': '!=',
+    '$like': 'LIKE', '$in': 'IN', '$between': 'BETWEEN'
+}
 
-            "$gt": ">",
-            "$gte": ">=",
-            "$lt": "<",
-            "$lte": "<=",
-            "$eq": "=",
-            "$ne": "!=",
-        }
 
 class Mysqlop:
     def __init__(self, host: str, port: int, user: str, passwd: str, charset: str = "utf8", logger: Logger = None):
@@ -169,7 +160,7 @@ class Mysqlop:
             self.__cur = None
             self.__logger.info(f"MYSQL数据库连接已关闭")
 
-    def __execute(self, sql: str, args = None, bool_commit: bool = True):
+    def __execute(self, sql: str, args=None, bool_commit: bool = True):
         """
         执行sql语句
 
@@ -350,66 +341,140 @@ class Mysqlop:
         """
         tablename = tablename or self.__selected_table
 
-        # 检查tablename是否是有效的表名
+        # 检查表名有效性
         if not re.match(r'^[a-zA-Z0-9_]+$', tablename):
-            self.__logger.error("tablename无效, 只能包含字母、数字和下划线.")
-            raise ValueError("tablename只能包含字母、数字和下划线.")
+            self.__logger.error("表名无效，只能包含字母、数字和下划线")
+            raise ValueError("表名只能包含字母、数字和下划线")
 
-        # 检查attr_dict是否为字典类型
+        # 检查attr_dict类型
         if not isinstance(attr_dict, dict):
-            self.__logger.error("attr_dict必须是一个字典.")
-            raise TypeError("attr_dict必须是一个字典.")
+            self.__logger.error("attr_dict必须为字典类型")
+            raise TypeError("attr_dict必须为字典类型")
 
-        if primary_key is None:
-            primary_key = []
+        # 初始化主键列表
+        primary_key = primary_key.copy() if primary_key else []
 
-        if bool_id:
-            if "id" not in list(attr_dict.keys()):
-                primary_key.append("id")
-
-        # 检查attr_dict的键和值是否符合要求
-        for col_name, data_type in attr_dict.items():
-            if not re.match(r'^[a-zA-Z0-9_]+$', col_name):
-                self.__logger.error("列名无效, 只能包含字母、数字和下划线.")
-                raise ValueError("列名只能包含字母、数字和下划线.")
-            data_type = data_type.upper()
-
-            # 验证数据类型是否有效, 考虑带参数的数据类型
-            match = re.match(r'(' + '|'.join(VALID_MYSQL_DATA_TYPES) + ')', data_type)
-            if not match:
-                self.__logger.error(f"{data_type}不是有效的MySQL数据类型")
-                raise ValueError(f"{data_type}不是有效的MySQL数据类型.")
-
-        # 检查primary_key中是否有重复元素
-        if len(set(primary_key)) != len(primary_key):
-            self.__logger.error("primary_key中有重复元素")
-            raise ValueError("primary_key中不能有重复元素")
-
-        # 检查primary_key中的元素是否为字符串
-        for key in primary_key:
-            if not isinstance(key, str):
-                self.__logger.error("primary_key中的元素类型不是字符串")
-                raise TypeError("primary_key中的元素必须是字符串.")
-
-        # 检查primary_key中的元素是否为空字符串
-        for key in primary_key:
-            if key == "":
-                self.__logger.error("primary_key中的元素为空字符串")
-                raise ValueError("primary_key中的元素不能为空字符串")
-
+        # 处理自增ID逻辑
         col_definitions = []
-        if bool_id and 'id' not in attr_dict:
-            col_definitions.append("`id` INT AUTO_INCREMENT")
-        for col_name, data_type in attr_dict.items():
-            col_definitions.append(f"`{col_name}` {data_type}")
-        columns = ', '.join(col_definitions)
-        pk_definition = f"PRIMARY KEY (`{', '.join(primary_key)}`)"
+        if bool_id:
+            if 'id' in attr_dict:
+                # 用户自定义了id列，验证数据类型并添加AUTO_INCREMENT
+                data_type = attr_dict['id'].upper()
+                base_type = re.match(r'^\w+', data_type).group()
+                allowed_types = ['INT', 'INTEGER', 'TINYINT', 'SMALLINT', 'BIGINT']
+                if base_type not in allowed_types:
+                    self.__logger.error(f"ID列的数据类型{data_type}不支持自增")
+                    raise ValueError("ID列必须为整数类型以支持自增")
+                if 'AUTO_INCREMENT' not in data_type:
+                    data_type += ' AUTO_INCREMENT'
+                col_definitions.append(f"`id` {data_type}")
+                # 确保ID在主键中
+                if 'id' not in primary_key:
+                    primary_key.append('id')
+                # 添加其他列（排除ID）
+                for col, dtype in attr_dict.items():
+                    if col != 'id':
+                        col_definitions.append(f"`{col}` {dtype}")
+            else:
+                # 自动添加ID列
+                col_definitions.append("`id` INT AUTO_INCREMENT")
+                primary_key.append('id')
+                # 添加所有列
+                for col, dtype in attr_dict.items():
+                    col_definitions.append(f"`{col}` {dtype}")
+        else:
+            # 无自增ID，直接添加所有列
+            for col, dtype in attr_dict.items():
+                col_definitions.append(f"`{col}` {dtype}")
 
-        sql = f"CREATE TABLE IF NOT EXISTS `{tablename}` ({columns}, {pk_definition}) ENGINE=InnoDB DEFAULT CHARSET=utf8"
+        # 检查列定义非空
+        if not col_definitions:
+            self.__logger.error("无法创建无列的表")
+            raise ValueError("表必须包含至少一列")
+
+        # 收集所有列名
+        column_names = []
+        for col_def in col_definitions:
+            match = re.match(r'^`([a-zA-Z0-9_]+)`', col_def)
+            if match:
+                column_names.append(match.group(1))
+            else:
+                self.__logger.error(f"列定义格式错误: {col_def}")
+                raise ValueError(f"列定义格式错误: {col_def}")
+
+        # 验证主键列存在
+        for pk in primary_key:
+            if pk not in column_names:
+                self.__logger.error(f"主键列{pk}不存在")
+                raise ValueError(f"主键列{pk}不存在")
+
+        # 主键重复性检查
+        if len(primary_key) != len(set(primary_key)):
+            self.__logger.error("主键列表中存在重复列名")
+            raise ValueError("主键列表中存在重复列名")
+
+        # 构建主键定义
+        pk_clause = ""
+        if primary_key:
+            pk_clause = f", PRIMARY KEY (`{'`, `'.join(primary_key)}`)"
+
+        # 构建并执行SQL
+        columns_sql = ', '.join(col_definitions)
+        sql = (f"CREATE TABLE IF NOT EXISTS `{tablename}` "
+               f"({columns_sql}{pk_clause}) ENGINE=InnoDB DEFAULT CHARSET=utf8")
         self.__execute(sql)
-        self.__logger.info(f"创建表{tablename}成功")
+
+        self.__logger.info(f"创建表 {tablename} 成功")
         if bool_autoselect:
             self.select_table(tablename)
+
+    # =-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=
+    @staticmethod
+    def __escape_identifier(identifier: str) -> str:
+        """转义标识符（表名、列名），防止SQL注入和关键字冲突"""
+        return '`' + identifier.replace('`', '``') + '`'
+
+    def __build_where_clause(self, conditions: dict) -> tuple:
+        """
+        构建WHERE子句和参数列表（支持复杂条件）
+        返回: (where_clause_str, parameter_list)
+        """
+        where_parts = []
+        params = []
+
+        for column, value in conditions.items():
+            # 转义列名
+            safe_col = self.__escape_identifier(column.strip())
+
+            if isinstance(value, dict):
+                # 处理操作符条件
+                for op_symbol, op_value in value.items():
+                    op = AVAILABLE_OPERATORS.get(
+                        op_symbol.upper() if op_symbol.startswith('$') else op_symbol
+                    )
+                    if not op:
+                        raise ValueError(f"无效操作符: {op_symbol}")
+
+                    if op == 'BETWEEN':
+                        if not isinstance(op_value, (list, tuple)) or len(op_value) != 2:
+                            raise ValueError("BETWEEN 需要两个值的列表")
+                        where_parts.append(f"{safe_col} BETWEEN %s AND %s")
+                        params.extend(op_value)
+                    elif op == 'IN':
+                        if not isinstance(op_value, (list, tuple)):
+                            raise ValueError("IN 需要列表或元组")
+                        placeholders = ', '.join(['%s'] * len(op_value))
+                        where_parts.append(f"{safe_col} IN ({placeholders})")
+                        params.extend(op_value)
+                    else:
+                        where_parts.append(f"{safe_col} {op} %s")
+                        params.append(op_value)
+            else:
+                # 简单等值条件
+                where_parts.append(f"{safe_col} = %s")
+                params.append(value)
+
+        return (" AND ".join(where_parts), params) if where_parts else ("", [])
 
     # =-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=
     def insert(self, tablename: str = '', record: dict = None, ignore_duplicates: bool = False):
@@ -425,173 +490,180 @@ class Mysqlop:
             self.__logger.error("插入数据失败: record 参数不能为空")
             raise ValueError("record 参数不能为空")
 
+        # 检查列名有效性
+        columns = list(record.keys())
+        if not columns:
+            self.__logger.error("插入数据失败: record 中无列名")
+            raise ValueError("record 中无列名")
+        for col in columns:
+            if not col.strip():
+                self.__logger.error("插入数据失败: 列名不能为空或仅包含空格")
+                raise ValueError("列名不能为空或仅包含空格")
+
+        # 处理表名
         tablename = tablename or self.__selected_table
         if not tablename:
             self.__logger.error("插入数据失败: 未选择表名")
             raise ValueError("未选择表名")
+        if not tablename.strip():
+            self.__logger.error("插入数据失败: 表名不能为空或仅包含空格")
+            raise ValueError("表名不能为空或仅包含空格")
 
-        columns = list(record.keys())
+        # 转义表名和列名
+        try:
+            safe_tablename = self.__escape_identifier(tablename.strip())
+            safe_columns = [self.__escape_identifier(col.strip()) for col in columns]
+        except Exception as e:
+            self.__logger.error(f"转义表名或列名失败: {e}")
+            raise ValueError("无效的表名或列名") from e
+
+        # 构造SQL
         values = list(record.values())
-
-        # 构建参数化查询的占位符
+        columns_str = ', '.join(safe_columns)
         placeholders = ', '.join(['%s'] * len(values))
-        columns_str = ', '.join(columns)
-
-        # 构建 SQL 语句
         if ignore_duplicates:
-            sql = f"INSERT IGNORE INTO {tablename} ({columns_str}) VALUES ({placeholders})"
+            sql = f"INSERT IGNORE INTO {safe_tablename} ({columns_str}) VALUES ({placeholders})"
         else:
-            sql = f"INSERT INTO {tablename} ({columns_str}) VALUES ({placeholders})"
+            sql = f"INSERT INTO {safe_tablename} ({columns_str}) VALUES ({placeholders})"
 
+        # 执行插入
         try:
             self.__execute(sql, values)
-            self.__logger.info(f"插入数据成功")
+            self.__logger.info(f"成功插入数据到表 {tablename}")
         except Exception as e:
-            self.__logger.error(f"插入数据失败: {e.__class__.__name__}: {e}")
-            raise Exception(f"插入数据失败: {e.__class__.__name__}: {e}") from None
+            self.__logger.error(f"插入数据到表 {tablename} 失败: {e}")
+            raise  # 重新抛出原始异常，保留堆栈信息
 
     def select(self, tablename: str = "", conditions: dict = None, order: dict = None, fields=None):
         """
         查询数据
 
-        :param tablename: 数据库表名.默认使用 self.__selected_table.
-        :param conditions: 查询条件, 支持操作符: `>`、`>=`、`<`、`<=`、`=`、`!=`、`LIKE`、`IN`、`BETWEEN`.
-            例如: 
-            {
-                "creat_at": {">=": "2023-01-01", "<": "2023-02-01"},
-                "status": "active",
-                "age": {">": 18, "<": 30}
-            }
-        :param order: 排序方式, 如 {"timestamp": "DESC"}.
-        :param fields: 返回字段, 默认所有字段.
-        :return: 查询结果.
+        :param tablename: 表名
+        :param conditions: 支持复杂操作符的查询条件
+        :param order: 返回结果排序的字典 键为列名, 值为 `DESC` 或者 `ASC`
+        :param fields: 返回该列名列表的结果, 默认返回所有列
+        :return: 查询结果
         """
-        if fields is None:
-            fields = ['*']
+        # 参数校验
         tablename = tablename or self.__selected_table
-        conditions = conditions or {}
-        order = order or {}
+        if not tablename.strip():
+            raise ValueError("表名不能为空")
 
-        def _format_value(v):
-            """处理时间戳和字符串转义"""
-            if isinstance(v, datetime.datetime):
-                # 将 datetime 对象转为标准格式字符串
-                return f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'"
-            elif v is None:
-                return 'NULL'
-            elif isinstance(v, str):
-                escaped = v.replace("'", "''")
-                return f"'{escaped}'"
-            elif isinstance(v, (int, float)):
-                return str(v)
-            else:
-                return str(v)
+        try:
+            safe_table = self.__escape_identifier(tablename.strip())
+        except Exception as e:
+            self.__logger.error(f"表名转义失败: {e}")
+            raise ValueError("无效表名") from e
 
-        where_clause_parts = []
-        for column, value in conditions.items():
-            if isinstance(value, dict):
-                # 处理操作符条件（如 {">": 100}）
-                conditions_list = []
-                for op, op_value in value.items():
-                    # 检查操作符是否合法
-                    sql_op = AVAILABLE_OPERATORS.get(op.upper() if op.startswith("$") else op)
-                    if not sql_op:
-                        raise ValueError(f"无效操作符: {op}, 可用的操作符为: {list(AVAILABLE_OPERATORS.keys())}")
-
-                    # 处理特殊操作符
-                    if sql_op == "BETWEEN":
-                        if not isinstance(op_value, (list, tuple)) or len(op_value) != 2:
-                            raise ValueError("BETWEEN 需要两个值的列表, 如 [start, end]")
-                        val1 = _format_value(op_value[0])
-                        val2 = _format_value(op_value[1])
-                        conditions_list.append(f"`{column}` BETWEEN {val1} AND {val2}")
-                    elif sql_op == "IN":
-                        if not isinstance(op_value, (list, tuple)):
-                            raise ValueError("IN 需要列表或元组")
-                        formatted_values = [_format_value(v) for v in op_value]
-                        conditions_list.append(f"`{column}` IN ({', '.join(formatted_values)})")
-                    else:
-                        # 常规操作符（如 >、>= 等）
-                        formatted_value = _format_value(op_value)
-                        conditions_list.append(f"`{column}` {sql_op} {formatted_value}")
-
-                # 合并同一字段的多个条件（如 > 20 AND < 40）
-                where_clause_parts.append(f"({' AND '.join(conditions_list)})")
-            else:
-                # 简单等值条件（如 "status": "active"）
-                formatted_value = _format_value(value)
-                where_clause_parts.append(f"`{column}` = {formatted_value}")
+        # 构建 WHERE 子句
+        where_clause, where_params = self.__build_where_clause(conditions or {})
 
         # 构建 SQL
-        fields_clause = ", ".join(fields) if fields != ['*'] else '*'
-        sql = f"SELECT {fields_clause} FROM {tablename}"
-        if where_clause_parts:
-            sql += f" WHERE {' AND '.join(where_clause_parts)}"
+        fields_clause = "*" if not fields else ", ".join(
+            [self.__escape_identifier(f.strip()) for f in fields]
+        )
+        sql = f"SELECT {fields_clause} FROM {safe_table}"
+        if where_clause:
+            sql += f" WHERE {where_clause}"
+
+        # 添加排序
         if order:
             order_clauses = []
             for col, dir in order.items():
+                safe_col = self.__escape_identifier(col.strip())
                 dir = dir.upper() if dir else "ASC"
                 if dir not in ("ASC", "DESC"):
                     raise ValueError("排序方向必须是 ASC 或 DESC")
-                order_clauses.append(f"`{col}` {dir}")
+                order_clauses.append(f"{safe_col} {dir}")
             sql += f" ORDER BY {', '.join(order_clauses)}"
 
         try:
-            print(sql)
-            result = self.__execute(sql)
-            self.__logger.info(f"查询数据成功")
+            result = self.__execute(sql, where_params)
+            self.__logger.info(f"查询表 {tablename} 成功，条件: {list(conditions.keys()) if conditions else '无'}")
             return result
         except Exception as e:
-            self.__logger.error(f"查询数据失败: {e.__class__.__name__}: {e}")
-            raise Exception(f"查询数据失败: {e.__class__.__name__}: {e}") from None
+            self.__logger.error(f"查询表 {tablename} 失败: {str(e)}")
+            raise
 
     def delete(self, tablename: str = '', conditions: dict = None):
         """
-        删除数据
+        删除数据（支持复杂条件）
 
         :param tablename: 表名
-        :param conditions: dict 删除
-        :return:
+        :param conditions: 支持操作符的删除条件
         """
         tablename = tablename or self.__selected_table
+        if not tablename.strip():
+            raise ValueError("表名不能为空")
 
-        conditions = conditions or {}
-        where_clause = ' AND '.join([f"`{k}` = %s" for k in conditions])
-        sql = f"DELETE FROM {tablename}"
-        if conditions:
+        try:
+            safe_table = self.__escape_identifier(tablename.strip())
+        except Exception as e:
+            self.__logger.error(f"表名转义失败: {e}")
+            raise ValueError("无效表名") from e
+
+        # 构建 WHERE 子句
+        where_clause, where_params = self.__build_where_clause(conditions or {})
+
+        # 危险操作检查
+        if not where_clause:
+            self.__logger.warning("正在执行全表删除操作！")
+
+        sql = f"DELETE FROM {safe_table}"
+        if where_clause:
             sql += f" WHERE {where_clause}"
 
         try:
-            self.__execute(sql, list(conditions.values()))
-            self.__logger.info(f"删除数据成功")
+            self.__execute(sql, where_params)
+            self.__logger.info(f"删除表 {tablename} 数据成功，条件: {list(conditions.keys()) if conditions else '全部'}")
         except Exception as e:
-            self.__logger.error(f"删除数据失败: {e.__class__.__name__}: {e}")
-            raise Exception(f"删除数据失败: {e.__class__.__name__}: {e}") from None
+            self.__logger.error(f"删除表 {tablename} 数据失败: {str(e)}")
+            raise
 
     def update(self, tablename: str = '', update_values: dict = None, conditions: dict = None):
         """
-        更新数据
+        更新数据（支持复杂条件）
 
-        :param tablename: 数据库表名
-        :param update_values: 新数据
-        :param conditions: 匹配数据字典(原数据)
-        :return:
+        :param tablename: 表名
+        :param update_values: 要更新的键值对
+        :param conditions: 支持操作符的更新条件
         """
+        # 参数校验
         tablename = tablename or self.__selected_table
+        if not tablename.strip():
+            raise ValueError("表名不能为空")
+        if not update_values:
+            raise ValueError("update_values 不能为空")
 
-        conditions = conditions or {}
-        set_clause = ', '.join([f"`{k}` = %s" for k in update_values])
-        where_clause = ' AND '.join([f"`{k}` = %s" for k in conditions])
-        sql = f"UPDATE {tablename} SET {set_clause}"
-        if conditions:
+        try:
+            safe_table = self.__escape_identifier(tablename.strip())
+            safe_columns = [self.__escape_identifier(k.strip()) for k in update_values]
+        except Exception as e:
+            self.__logger.error(f"标识符转义失败: {e}")
+            raise ValueError("无效表名或列名") from e
+
+        # 构建 SET 子句
+        set_clause = ", ".join([f"{col} = %s" for col in safe_columns])
+        set_params = list(update_values.values())
+
+        # 构建 WHERE 子句
+        where_clause, where_params = self.__build_where_clause(conditions or {})
+
+        # 危险操作检查
+        if not where_clause:
+            self.__logger.warning("正在执行全表更新操作！")
+
+        # 组合 SQL
+        sql = f"UPDATE {safe_table} SET {set_clause}"
+        if where_clause:
             sql += f" WHERE {where_clause}"
 
         try:
-            self.__execute(sql, list(update_values.values()) + list(conditions.values()))
-            self.__logger.info(f"更新数据成功")
+            self.__execute(sql, set_params + where_params)
+            self.__logger.info(f"更新表 {tablename} 成功，更新列: {list(update_values.keys())}")
         except Exception as e:
-            self.__logger.error(f"更新数据失败: {e.__class__.__name__}: {e}")
-            raise Exception(f"更新数据失败: {e.__class__.__name__}: {e}") from None
+            self.__logger.error(f"更新表 {tablename} 失败: {str(e)}")
+            raise
 
     def drop_table(self, tablename: str = ''):
         """
