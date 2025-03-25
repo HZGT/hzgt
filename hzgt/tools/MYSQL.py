@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-import datetime
 import os
 import re
 from logging import Logger
 
 import pymysql
+from pymysql import OperationalError
 
 from ..log import set_log
 
@@ -100,7 +100,10 @@ AVAILABLE_OPERATORS = {
 
 
 class Mysqlop:
-    def __init__(self, host: str, port: int, user: str, passwd: str, charset: str = "utf8", logger: Logger = None):
+    def __init__(self, host: str, port: int, user: str, passwd: str,
+                 charset: str = "utf8", logger: Logger = None,
+                 autocommit: bool = False,
+                 autoreconnect: bool = True, reconnect_retries: int = 3):
         """
         初始化mmysql类
 
@@ -111,79 +114,117 @@ class Mysqlop:
         :param charset: 编码 默认 UTF8
 
         :param logger: 日志记录器
+        :param autocommit: 是否自动提交处理 默认 Flase
+        :param autoreconnect: 是否自动重连 默认 True
+        :param reconnect_retries: 重连次数
         """
-        self.__config = {"host": str(host),
-                         "port": int(port),
-                         "user": str(user),
-                         "passwd": str(passwd),
-                         'charset': charset}
+        self.__config = {
+            "host": str(host),
+            "port": int(port),
+            "user": str(user),
+            "password": str(passwd),
+            "charset": charset,
+            "autocommit": autocommit  # 统一在此设置
+        }
         self.__con = None
-        self.__cur = None
-        self.__selected_db = None  # 已选择的数据库
-        self.__selected_table = None  # 已选择的数据库表
+        self.__selected_db = None
+        self.__selected_table = None
+        self.autoreconnect = autoreconnect
+        self.reconnect_retries = reconnect_retries
 
+        # 日志配置
         if logger is None:
             self.__logger = set_log("hzgt.mysql", os.path.join("logs", "mysql.log"), level=2)
         else:
             self.__logger = logger
         self.__logger.info(f'MYSQL类初始化完成 "host": {str(host)}, "port": {int(port)}, "user": {str(user)}')
 
-    def start(self):
-        """
-        启动服务器连接
+    def _ensure_connection(self):
+        """确保连接有效（核心方法）"""
+        if self.__con is None:
+            self.start()
+            return
 
-        :return:
-        """
         try:
-            self.__con = pymysql.connect(**self.__config, autocommit=False)
-            self.__cur = self.__con.cursor()
-            self.__logger.info(f"MYSQL数据库连接成功")
-        except Exception as e:
-            self.__logger.error(f"MYSQL数据库连接失败, 错误原因: {e}")
-            raise Exception(f'数据库连接失败. Error: {e.__class__.__name__}: {e}') from None
+            # 当reconnect=True时，ping会自动尝试重新连接
+            self.__con.ping(reconnect=True)
+            self.__logger.debug("数据库连接状态检查通过")
+        except OperationalError as e:
+            if self.autoreconnect:
+                self.__logger.warning(f"连接丢失（错误码 {e.args[0]}），尝试重新连接...")
+                self._safe_connect()
+            else:
+                raise
+
+    def _safe_connect(self):
+        """安全的连接方法（带重试机制）"""
+        for attempt in range(1, self.reconnect_retries + 1):
+            try:
+                self.close()  # 先关闭旧连接
+                self.__con = pymysql.connect(**self.__config)
+                self.__logger.info(f"MySQL数据库重新连接成功（尝试 {attempt} 次）")
+
+                # 恢复之前的数据库和表选择状态
+                if self.__selected_db:
+                    self.select_db(self.__selected_db)
+                if self.__selected_table:
+                    self.select_table(self.__selected_table)
+                return
+            except OperationalError as e:
+                self.__logger.error(f"连接失败（尝试 {attempt}/{self.reconnect_retries}）: {e}")
+                if attempt == self.reconnect_retries:
+                    raise RuntimeError(f"数据库连接失败，重试{self.reconnect_retries}次后仍不可用: {e}") from None
+
+    def start(self):
+        """启动服务器连接"""
+        self._safe_connect()
 
     def __enter__(self):
+        self._ensure_connection()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def connect(self):
-        return self.start()
-
     def close(self):
+        """安全关闭连接"""
         if self.__con:
-            self.__con.rollback()  # 确保回滚任何待处理的事务
-            self.__cur.close()
-            self.__con.close()
-            self.__con = None
-            self.__cur = None
-            self.__logger.info(f"MYSQL数据库连接已关闭")
+            try:
+                self.__con.rollback()
+                if self.__con.open:
+                    self.__con.close()
+                self.__logger.info("MYSQL数据库连接已安全关闭")
+            except Exception as e:
+                self.__logger.error(f"关闭连接时发生错误: {e}")
+            finally:
+                self.__con = None
+                self.__selected_db = None
+                self.__selected_table = None
 
     def __execute(self, sql: str, args=None, bool_commit: bool = True):
         """
-        执行sql语句
-
-        :param sql: sql语句
-        :param args: 其它参数
-        :param bool_commit: 是否自动提交 默认 True
-        :return:
+        执行sql语句（带自动重连机制）
         """
-        try:
-            if args:
-                self.__cur.execute(sql, args)
-            else:
-                self.__cur.execute(sql)
-            if bool_commit:
-                self.__con.commit()
-            return self.__cur.fetchall()
-        except AttributeError as attrerr:
-            self.__logger.error(f"MYSQL未登录, 无法执行SQL语句")
-            raise Exception(f'MYSQL未登录, 无法执行SQL语句')
-        except Exception as e:
-            self.__logger.error(f"执行数据库SQL语句失败, 错误原因: {e.__class__.__name__}: {e}")
-            self.__con.rollback()
-            raise Exception(f'执行数据库SQL语句失败: {e.__class__.__name__}: {e}') from None
+        for attempt in range(2):  # 最多重试1次
+            try:
+                self._ensure_connection()
+                with self.__con.cursor() as cursor:  # 使用新的游标
+                    cursor.execute(sql, args)
+                    if bool_commit:
+                        self.__con.commit()
+                    return cursor.fetchall()
+            except OperationalError as e:
+                if attempt == 0 and self.autoreconnect:
+                    self.__logger.warning(f"执行失败，尝试重新连接后重试: {e}")
+                    self._safe_connect()
+                    continue
+                self.__con.rollback()
+                self.__logger.error(f"执行SQL失败: {sql} | 参数: {args}")
+                raise
+            except Exception as e:
+                self.__con.rollback()
+                self.__logger.error(f"执行SQL时发生意外错误: {e}")
+                raise
 
     def get_curuser(self):
         self.__logger.debug(f"获取当前用户名")
@@ -236,15 +277,15 @@ class Mysqlop:
         return self.__execute(f"DESCRIBE {tablename}")
 
     def select_db(self, dbname: str):
-        """
-        选择数据库
-
-        :param dbname: 数据库名
-        :return:
-        """
-        self.__con.select_db(dbname)
-        self.__selected_db = dbname
-        self.__logger.debug(f"已选择MYSQL数据库[{dbname}]")
+        """选择数据库"""
+        self._ensure_connection()
+        try:
+            self.__con.select_db(dbname)
+            self.__selected_db = dbname
+            self.__logger.debug(f"已选择数据库: {dbname}")
+        except OperationalError as e:
+            self.__logger.error(f"选择数据库失败: {e}")
+            raise
 
     def create_db(self, dbname: str, bool_autoselect: bool = True):
         """
@@ -272,15 +313,10 @@ class Mysqlop:
             self.__selected_db = None
             self.__logger.debug(f"MYSQL数据库[{dbname}]已清除选择")
 
-    def select_table(self, tablename: str):
-        """
-        选择数据库表
-
-        :param tablename: 需要选择的表名
-        :return:
-        """
-        self.__selected_table = tablename
-        self.__logger.debug(f"已选择MYSQL数据库表[{self.__selected_db}.{tablename}]")
+    def select_table(self, table_name: str):
+        """记录选择的表（实际不执行SQL）"""
+        self.__selected_table = table_name
+        self.__logger.debug(f"已记录选择表: {table_name}")
 
     def create_table(self, tablename: str, attr_dict: dict, primary_key: list[str] = None,
                      bool_id: bool = True, bool_autoselect: bool = True):
@@ -767,6 +803,6 @@ class Mysqlop:
             self.__logger.info(f"查询当前用户的权限信息成功")
             return parse_grants(privileges)
         except Exception as e:
-            error = '执行查询用户权限的SQL语句失败: %s' % (e.args)
+            error = '执行查询用户权限的SQL语句失败: %s' % e.args
             self.__logger.error(error)
             raise Exception(error + f" {e.__class__.__name__}: {e}") from None

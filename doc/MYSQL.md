@@ -21,13 +21,15 @@
 
 ### constructor parameters
 ### 构造函数参数[Constructor Parameters]
-- `host`: MySQL 服务器地址(必填), 例如 "localhost"
-- `port`: MySQL 服务器端口(必填), 例如 3306
+- `host`: MySQL 服务器地址(必填), 例如 `"localhost"`
+- `port`: MySQL 服务器端口(必填), 例如 `3306`
 - `user`: 数据库用户名(必填)
 - `passwd`: 数据库密码(必填)
-- `charset`: 字符编码(默认 "utf8")
-- `logger`: 自定义日志记录器. 若未提供, 将自动创建默认日志(保存至 logs/mysql.log)
-
+- `charset`: 字符编码(默认 `"utf8"`)
+- `logger`: 自定义日志记录器. 若未提供, 将自动创建默认日志(保存至 `"logs/mysql.log"`)
+- `autocommit`: 是否自动提交处理(默认`False`)
+- `autoreconnect`: 是否自动重连(默认`True`)
+- `reconnect_retries`: 重连次数(默认`3`)
 ### core methods
 ### 核心方法[Core Methods]
 #### connect and disconnect

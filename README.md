@@ -17,7 +17,7 @@
   * 函数[getip](#func-getip)
   * 函数[pic](#func-pic)
   * 函数[restrop](#func-restrop)
-  * 函数[set_log](#func-setlog)
+  * 函数[set_log](#func-set_log)
 
   * 装饰器[vargs](#decorator-vargs)
 
@@ -34,7 +34,7 @@
         Mqttop():
             封装 MQTT 类, 支持 发送信息 和 接收信息
             Encapsulates MQTT classes that support sending and receiving information
-        Mysqldbop():
+        Mysqlop():
             封装 MYSQL 类, 支持操作 MYSQL 数据库, 包括 [增/删/改/查]
             encapsulating MYSQL classes, supporting operations on MYSQL Database, including [ADD/DELETE/MODIFY/QUERY]
         Ftpserver():
@@ -236,9 +236,9 @@ saveini("cfg.ini",
 
 `函数[func]: getip()`
 
-`getip` 函数用于获取局域网内的IP地址.
+`getip` 函数用于获取本地主机的IP地址.
 
-The `getip` function is used to get the IP address within the local network.
+The `getip` function is used to get the IP address of the local host.
 
 参数:
 - `index`: 获取的IP地址的索引 默认为 **-1**
