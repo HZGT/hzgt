@@ -4,7 +4,6 @@ import re
 from logging import Logger
 
 import pymysql
-from pymysql import OperationalError
 
 from ..log import set_log
 
@@ -146,12 +145,12 @@ class Mysqlop:
             return
 
         try:
-            # 当reconnect=True时，ping会自动尝试重新连接
+            # 当reconnect=True时, ping会自动尝试重新连接
             self.__con.ping(reconnect=True)
             self.__logger.debug("数据库连接状态检查通过")
-        except OperationalError as e:
+        except pymysql.OperationalError as e:
             if self.autoreconnect:
-                self.__logger.warning(f"连接丢失（错误码 {e.args[0]}），尝试重新连接...")
+                self.__logger.warning(f"连接丢失（错误码 {e.args[0]}）, 尝试重新连接...")
                 self._safe_connect()
             else:
                 raise
@@ -162,7 +161,7 @@ class Mysqlop:
             try:
                 self.close()  # 先关闭旧连接
                 self.__con = pymysql.connect(**self.__config)
-                self.__logger.info(f"MySQL数据库重新连接成功（尝试 {attempt} 次）")
+                self.__logger.info(f"MySQL数据库连接成功（尝试 {attempt} 次）")
 
                 # 恢复之前的数据库和表选择状态
                 if self.__selected_db:
@@ -170,10 +169,10 @@ class Mysqlop:
                 if self.__selected_table:
                     self.select_table(self.__selected_table)
                 return
-            except OperationalError as e:
+            except pymysql.OperationalError as e:
                 self.__logger.error(f"连接失败（尝试 {attempt}/{self.reconnect_retries}）: {e}")
                 if attempt == self.reconnect_retries:
-                    raise RuntimeError(f"数据库连接失败，重试{self.reconnect_retries}次后仍不可用: {e}") from None
+                    raise RuntimeError(f"数据库连接失败, 重试{self.reconnect_retries}次后仍不可用: {e}") from e
 
     def start(self):
         """启动服务器连接"""
@@ -198,8 +197,6 @@ class Mysqlop:
                 self.__logger.error(f"关闭连接时发生错误: {e}")
             finally:
                 self.__con = None
-                self.__selected_db = None
-                self.__selected_table = None
 
     def __execute(self, sql: str, args=None, bool_commit: bool = True):
         """
@@ -213,9 +210,9 @@ class Mysqlop:
                     if bool_commit:
                         self.__con.commit()
                     return cursor.fetchall()
-            except OperationalError as e:
+            except pymysql.OperationalError as e:
                 if attempt == 0 and self.autoreconnect:
-                    self.__logger.warning(f"执行失败，尝试重新连接后重试: {e}")
+                    self.__logger.warning(f"执行失败, 尝试重新连接后重试: {e}")
                     self._safe_connect()
                     continue
                 self.__con.rollback()
@@ -260,6 +257,7 @@ class Mysqlop:
         :return: list: 返回已选择的数据库的所有表
         """
         dbname = dbname or self.__selected_db
+        dbname = self.__escape_identifier(dbname)
         if not dbname:
             self.__logger.error(f"未选择数据库, 无法获取表名")
             raise Exception(f'未选择数据库, 无法获取表名')
@@ -280,10 +278,11 @@ class Mysqlop:
         """选择数据库"""
         self._ensure_connection()
         try:
-            self.__con.select_db(dbname)
+            dbname = self.__escape_identifier(dbname)
+            self.__execute(f"USE {dbname}")
             self.__selected_db = dbname
             self.__logger.debug(f"已选择数据库: {dbname}")
-        except OperationalError as e:
+        except pymysql.OperationalError as e:
             self.__logger.error(f"选择数据库失败: {e}")
             raise
 
@@ -295,6 +294,12 @@ class Mysqlop:
         :param bool_autoselect: 是否自动选择该数据库
         :return:
         """
+        dbname = self.__escape_identifier(dbname)
+        # 注入sql检验
+        if not re.match(r'^[a-zA-Z0-9_$#@]+$', dbname):
+            self.__logger.error(f"数据库名[{dbname}]不合法, 请使用以下符号: 字母、数字、下划线、美元符号、井号、@")
+            raise Exception(f'数据库名[{dbname}]不合法, 请使用以下符号: 字母、数字、下划线、美元符号、井号、@')
+
         self.__execute(f"CREATE DATABASE IF NOT EXISTS `{dbname}` CHARACTER SET utf8 COLLATE utf8_general_ci")
         self.__logger.info(f"MYSQL数据库[{dbname}]创建成功")
         if bool_autoselect:
@@ -307,6 +312,7 @@ class Mysqlop:
         :param dbname: 需要删除的数据库名
         :return:
         """
+        dbname = self.__escape_identifier(dbname)
         self.__execute(f"DROP DATABASE IF EXISTS `{dbname}`")
         self.__logger.info(f"MYSQL数据库[{dbname}]删除成功")
         if dbname == self.__selected_db:
@@ -379,7 +385,7 @@ class Mysqlop:
 
         # 检查表名有效性
         if not re.match(r'^[a-zA-Z0-9_]+$', tablename):
-            self.__logger.error("表名无效，只能包含字母、数字和下划线")
+            self.__logger.error("表名无效, 只能包含字母、数字和下划线")
             raise ValueError("表名只能包含字母、数字和下划线")
 
         # 检查attr_dict类型
@@ -394,7 +400,7 @@ class Mysqlop:
         col_definitions = []
         if bool_id:
             if 'id' in attr_dict:
-                # 用户自定义了id列，验证数据类型并添加AUTO_INCREMENT
+                # 用户自定义了id列, 验证数据类型并添加AUTO_INCREMENT
                 data_type = attr_dict['id'].upper()
                 base_type = re.match(r'^\w+', data_type).group()
                 allowed_types = ['INT', 'INTEGER', 'TINYINT', 'SMALLINT', 'BIGINT']
@@ -419,7 +425,7 @@ class Mysqlop:
                 for col, dtype in attr_dict.items():
                     col_definitions.append(f"`{col}` {dtype}")
         else:
-            # 无自增ID，直接添加所有列
+            # 无自增ID, 直接添加所有列
             for col, dtype in attr_dict.items():
                 col_definitions.append(f"`{col}` {dtype}")
 
@@ -467,7 +473,7 @@ class Mysqlop:
     # =-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=
     @staticmethod
     def __escape_identifier(identifier: str) -> str:
-        """转义标识符（表名、列名），防止SQL注入和关键字冲突"""
+        """转义标识符（表名、列名）, 防止SQL注入和关键字冲突"""
         return '`' + identifier.replace('`', '``') + '`'
 
     def __build_where_clause(self, conditions: dict) -> tuple:
@@ -568,7 +574,7 @@ class Mysqlop:
             self.__logger.info(f"成功插入数据到表 {tablename}")
         except Exception as e:
             self.__logger.error(f"插入数据到表 {tablename} 失败: {e}")
-            raise  # 重新抛出原始异常，保留堆栈信息
+            raise  # 重新抛出原始异常, 保留堆栈信息
 
     def select(self, tablename: str = "", conditions: dict = None, order: dict = None, fields=None):
         """
@@ -605,17 +611,17 @@ class Mysqlop:
         # 添加排序
         if order:
             order_clauses = []
-            for col, dir in order.items():
+            for col, _dir in order.items():
                 safe_col = self.__escape_identifier(col.strip())
-                dir = dir.upper() if dir else "ASC"
-                if dir not in ("ASC", "DESC"):
-                    raise ValueError("排序方向必须是 ASC 或 DESC")
-                order_clauses.append(f"{safe_col} {dir}")
+                _dir = _dir.upper() if _dir else "ASC"
+                if _dir not in ("ASC", "DESC"):
+                    raise ValueError("排序方向必须是 `ASC` 或 `DESC`")
+                order_clauses.append(f"{safe_col} {_dir}")
             sql += f" ORDER BY {', '.join(order_clauses)}"
 
         try:
             result = self.__execute(sql, where_params)
-            self.__logger.info(f"查询表 {tablename} 成功，条件: {list(conditions.keys()) if conditions else '无'}")
+            self.__logger.info(f"查询表 {tablename} 成功, 条件: {list(conditions.keys()) if conditions else '无'}")
             return result
         except Exception as e:
             self.__logger.error(f"查询表 {tablename} 失败: {str(e)}")
@@ -651,7 +657,7 @@ class Mysqlop:
 
         try:
             self.__execute(sql, where_params)
-            self.__logger.info(f"删除表 {tablename} 数据成功，条件: {list(conditions.keys()) if conditions else '全部'}")
+            self.__logger.info(f"删除表 {tablename} 数据成功, 条件: {list(conditions.keys()) if conditions else '全部'}")
         except Exception as e:
             self.__logger.error(f"删除表 {tablename} 数据失败: {str(e)}")
             raise
@@ -696,7 +702,7 @@ class Mysqlop:
 
         try:
             self.__execute(sql, set_params + where_params)
-            self.__logger.info(f"更新表 {tablename} 成功，更新列: {list(update_values.keys())}")
+            self.__logger.info(f"更新表 {tablename} 成功, 更新列: {list(update_values.keys())}")
         except Exception as e:
             self.__logger.error(f"更新表 {tablename} 失败: {str(e)}")
             raise
