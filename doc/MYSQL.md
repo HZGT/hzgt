@@ -25,9 +25,9 @@
 - `port`: MySQL 服务器端口(必填), 例如 `3306`
 - `user`: 数据库用户名(必填)
 - `passwd`: 数据库密码(必填)
+- `database`: 初始连接的数据库名(可选)
 - `charset`: 字符编码(默认 `"utf8"`)
 - `logger`: 自定义日志记录器. 若未提供, 将自动创建默认日志(保存至 `"logs/mysql.log"`)
-- `autocommit`: 是否自动提交处理(默认`False`)
 - `autoreconnect`: 是否自动重连(默认`True`)
 - `reconnect_retries`: 重连次数(默认`3`)
 ### core methods
@@ -81,6 +81,7 @@
   ```
   print(mysql.get_all_db())
   ```
+  
 5. `get_all_nonsys_db()`
 - 功能:  获取所有非系统数据库名称
 - 示例:  
@@ -241,9 +242,6 @@ print(results)
 - `字符集兼容性`
 建库时默认使用 utf8 字符集, 确保与现有系统兼容
 
-- `事务管理`
-默认关闭自动提交(**autocommit=False**), 需手动执行 ```self.__con.commit()```
-
 - `线程安全`
 每个实例应在独立线程中使用, 避免多线程共享连接
 
@@ -375,7 +373,7 @@ print(results)
 | `TRANSACTION_GTID_TAG`         | 高级权限 | 交易GTID标记     |
 | `XA_RECOVER_ADMIN`             | 高级权限 | XA恢复管理       |
 
-| 权限名称             | 类型   | 描述   |
-|------------------|------|------|
-| `USAGE`          | 其它权限 | 访客权限 |
-| `ALL PRIVILEGES` | 其它权限 | 所有权限 |
+| 权限名称             | 类型 | 描述   |
+|------------------|----|------|
+| `USAGE`          | 其它 | 访客权限 |
+| `ALL PRIVILEGES` | 其它 | 所有权限 |

@@ -100,8 +100,8 @@ AVAILABLE_OPERATORS = {
 
 class Mysqlop:
     def __init__(self, host: str, port: int, user: str, passwd: str,
+                 database: str = None,
                  charset: str = "utf8", logger: Logger = None,
-                 autocommit: bool = False,
                  autoreconnect: bool = True, reconnect_retries: int = 3):
         """
         初始化mmysql类
@@ -110,10 +110,10 @@ class Mysqlop:
         :param port: 端口
         :param user: 用户名
         :param passwd: 密码
+        :param database: 初始连接的数据库名(可选)
         :param charset: 编码 默认 UTF8
 
         :param logger: 日志记录器
-        :param autocommit: 是否自动提交处理 默认 Flase
         :param autoreconnect: 是否自动重连 默认 True
         :param reconnect_retries: 重连次数
         """
@@ -122,8 +122,9 @@ class Mysqlop:
             "port": int(port),
             "user": str(user),
             "password": str(passwd),
+            "database": database,
             "charset": charset,
-            "autocommit": autocommit  # 统一在此设置
+            "autocommit": True
         }
         self.__con = None
         self.__selected_db = None
@@ -139,7 +140,7 @@ class Mysqlop:
         self.__logger.info(f'MYSQL类初始化完成 "host": {str(host)}, "port": {int(port)}, "user": {str(user)}')
 
     def _ensure_connection(self):
-        """确保连接有效（核心方法）"""
+        """确保连接有效(核心方法)"""
         if self.__con is None:
             self.start()
             return
@@ -150,27 +151,23 @@ class Mysqlop:
             self.__logger.debug("数据库连接状态检查通过")
         except pymysql.OperationalError as e:
             if self.autoreconnect:
-                self.__logger.warning(f"连接丢失（错误码 {e.args[0]}）, 尝试重新连接...")
+                self.__logger.warning(f"连接丢失(错误码 {e.args[0]}), 尝试重新连接...")
                 self._safe_connect()
             else:
                 raise
 
     def _safe_connect(self):
-        """安全的连接方法（带重试机制）"""
+        """安全的连接方法(带重试机制)"""
         for attempt in range(1, self.reconnect_retries + 1):
             try:
                 self.close()  # 先关闭旧连接
+                # 连接时自动使用最新的数据库配置
                 self.__con = pymysql.connect(**self.__config)
-                self.__logger.info(f"MySQL数据库连接成功（尝试 {attempt} 次）")
+                self.__logger.info(f"MySQL连接成功(数据库: {self.__selected_db})")
 
-                # 恢复之前的数据库和表选择状态
-                if self.__selected_db:
-                    self.select_db(self.__selected_db)
-                if self.__selected_table:
-                    self.select_table(self.__selected_table)
                 return
             except pymysql.OperationalError as e:
-                self.__logger.error(f"连接失败（尝试 {attempt}/{self.reconnect_retries}）: {e}")
+                self.__logger.error(f"连接失败(尝试 {attempt}/{self.reconnect_retries}): {e}")
                 if attempt == self.reconnect_retries:
                     raise RuntimeError(f"数据库连接失败, 重试{self.reconnect_retries}次后仍不可用: {e}") from e
 
@@ -198,17 +195,15 @@ class Mysqlop:
             finally:
                 self.__con = None
 
-    def __execute(self, sql: str, args=None, bool_commit: bool = True):
+    def __execute(self, sql: str, args=None):
         """
-        执行sql语句（带自动重连机制）
+        执行sql语句(带自动重连机制)
         """
         for attempt in range(2):  # 最多重试1次
             try:
                 self._ensure_connection()
                 with self.__con.cursor() as cursor:  # 使用新的游标
                     cursor.execute(sql, args)
-                    if bool_commit:
-                        self.__con.commit()
                     return cursor.fetchall()
             except pymysql.OperationalError as e:
                 if attempt == 0 and self.autoreconnect:
@@ -275,16 +270,11 @@ class Mysqlop:
         return self.__execute(f"DESCRIBE {tablename}")
 
     def select_db(self, dbname: str):
-        """选择数据库"""
-        self._ensure_connection()
-        try:
-            dbname = self.__escape_identifier(dbname)
-            self.__execute(f"USE {dbname}")
-            self.__selected_db = dbname
-            self.__logger.debug(f"已选择数据库: {dbname}")
-        except pymysql.OperationalError as e:
-            self.__logger.error(f"选择数据库失败: {e}")
-            raise
+        """选择数据库，更新配置并重新连接"""
+        self.__selected_db = dbname
+        self.__config["database"] = dbname  # 更新连接配置中的数据库名
+        if self.__con:  # 若已连接，则重新连接以应用新配置
+            self._safe_connect()
 
     def create_db(self, dbname: str, bool_autoselect: bool = True):
         """
@@ -320,7 +310,7 @@ class Mysqlop:
             self.__logger.debug(f"MYSQL数据库[{dbname}]已清除选择")
 
     def select_table(self, table_name: str):
-        """记录选择的表（实际不执行SQL）"""
+        """记录选择的表(实际不执行SQL)"""
         self.__selected_table = table_name
         self.__logger.debug(f"已记录选择表: {table_name}")
 
@@ -335,9 +325,9 @@ class Mysqlop:
 
         + 整数类型
 
-            + TINYINT:  1字节, 范围从-128到127（有符号）, 0到255（无符号）. 适用于存储小整数值, 如状态标志或性别.
-            + SMALLINT:  2字节, 范围从-32,768到32,767（有符号）, 0到65,535（无符号）. 用于中等大小的整数.
-            + INT或INTEGER:  4字节, 范围从-2,147,483,648到2,147,483,647（有符号）, 0到4,294,967,295（无符号）. 通常用于存储一般整数数据.
+            + TINYINT:  1字节, 范围从-128到127(有符号), 0到255(无符号). 适用于存储小整数值, 如状态标志或性别.
+            + SMALLINT:  2字节, 范围从-32,768到32,767(有符号), 0到65,535(无符号). 用于中等大小的整数.
+            + INT或INTEGER:  4字节, 范围从-2,147,483,648到2,147,483,647(有符号), 0到4,294,967,295(无符号). 通常用于存储一般整数数据.
             + BIGINT:  8字节, 范围更大, 适用于非常大的整数, 如用户ID或订单号.
 
         + 浮点数类型
@@ -351,8 +341,8 @@ class Mysqlop:
 
         + 日期和时间类型
 
-            + DATE:  3字节, 用于存储日期（年、月、日）.
-            + TIME:  3字节, 用于存储时间（时、分、秒）.
+            + DATE:  3字节, 用于存储日期(年、月、日).
+            + TIME:  3字节, 用于存储时间(时、分、秒).
             + DATETIME:  8字节, 用于存储日期和时间.
             + TIMESTAMP:  4字节, 通常用于记录创建和修改时间, 存储范围受限于32位UNIX时间戳.
 
@@ -413,7 +403,7 @@ class Mysqlop:
                 # 确保ID在主键中
                 if 'id' not in primary_key:
                     primary_key.append('id')
-                # 添加其他列（排除ID）
+                # 添加其他列(排除ID)
                 for col, dtype in attr_dict.items():
                     if col != 'id':
                         col_definitions.append(f"`{col}` {dtype}")
@@ -473,12 +463,12 @@ class Mysqlop:
     # =-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-=-=-=-=-=-=-=-=-=
     @staticmethod
     def __escape_identifier(identifier: str) -> str:
-        """转义标识符（表名、列名）, 防止SQL注入和关键字冲突"""
+        """转义标识符(表名、列名), 防止SQL注入和关键字冲突"""
         return '`' + identifier.replace('`', '``') + '`'
 
     def __build_where_clause(self, conditions: dict) -> tuple:
         """
-        构建WHERE子句和参数列表（支持复杂条件）
+        构建WHERE子句和参数列表(支持复杂条件)
         返回: (where_clause_str, parameter_list)
         """
         where_parts = []
@@ -525,7 +515,7 @@ class Mysqlop:
 
         :param tablename: 数据库表名, 如果未提供则使用当前选择的表
         :param record: 需要插入的数据, 格式为字典 {列名: 值}
-        :param ignore_duplicates: 是否忽略重复数据（如果数据已存在, 是否跳过插入）
+        :param ignore_duplicates: 是否忽略重复数据(如果数据已存在, 是否跳过插入)
         :return: 无返回值
         """
         if not record:
@@ -629,7 +619,7 @@ class Mysqlop:
 
     def delete(self, tablename: str = '', conditions: dict = None):
         """
-        删除数据（支持复杂条件）
+        删除数据(支持复杂条件)
 
         :param tablename: 表名
         :param conditions: 支持操作符的删除条件
@@ -664,7 +654,7 @@ class Mysqlop:
 
     def update(self, tablename: str = '', update_values: dict = None, conditions: dict = None):
         """
-        更新数据（支持复杂条件）
+        更新数据(支持复杂条件)
 
         :param tablename: 表名
         :param update_values: 要更新的键值对
@@ -764,7 +754,7 @@ class Mysqlop:
         """
         查询当前用户的权限信息
 
-        :return: 字典. 键为数据库名（如 '*.*', 'dbname.*'）, 值为权限列表（如 ['SELECT', 'INSERT']）
+        :return: 字典. 键为数据库名(如 '*.*', 'dbname.*'), 值为权限列表(如 ['SELECT', 'INSERT'])
         """
         # SQL语句用于查询当前用户的权限
         # SHOW GRANTS FOR CURRENT_USER() 显示当前用户的权限
