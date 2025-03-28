@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import re
+import time
 from logging import Logger
 
 import pymysql
@@ -101,7 +102,7 @@ AVAILABLE_OPERATORS = {
 class Mysqlop:
     def __init__(self, host: str, port: int, user: str, passwd: str,
                  database: str = None,
-                 charset: str = "utf8", logger: Logger = None,
+                 charset: str = "utf8", logger: Logger = None, default_level: int = 2,
                  autoreconnect: bool = True, reconnect_retries: int = 3):
         """
         初始化mmysql类
@@ -114,6 +115,7 @@ class Mysqlop:
         :param charset: 编码 默认 UTF8
 
         :param logger: 日志记录器
+        :param default_level: 默认日志等级 默认为 2 [INFO]
         :param autoreconnect: 是否自动重连 默认 True
         :param reconnect_retries: 重连次数
         """
@@ -127,53 +129,57 @@ class Mysqlop:
             "autocommit": True
         }
         self.__con = None
-        self.__selected_db = None
+        self.__selected_db = database
         self.__selected_table = None
         self.autoreconnect = autoreconnect
         self.reconnect_retries = reconnect_retries
 
         # 日志配置
         if logger is None:
-            self.__logger = set_log("hzgt.mysql", os.path.join("logs", "mysql.log"), level=2)
+            self.__logger = set_log("hzgt.mysql", os.path.join("logs", "mysql.log"), level=default_level)
         else:
             self.__logger = logger
         self.__logger.info(f'MYSQL类初始化完成 "host": {str(host)}, "port": {int(port)}, "user": {str(user)}')
 
-    def _ensure_connection(self):
-        """确保连接有效(核心方法)"""
-        if self.__con is None:
-            self.start()
-            return
-
-        try:
-            # 当reconnect=True时, ping会自动尝试重新连接
-            self.__con.ping(reconnect=True)
-            self.__logger.debug("数据库连接状态检查通过")
-        except pymysql.OperationalError as e:
-            if self.autoreconnect:
-                self.__logger.warning(f"连接丢失(错误码 {e.args[0]}), 尝试重新连接...")
-                self._safe_connect()
-            else:
-                raise
-
     def _safe_connect(self):
-        """安全的连接方法(带重试机制)"""
+        """安全的连接方法(带重试机制)，仅在需要时关闭旧连接"""
         for attempt in range(1, self.reconnect_retries + 1):
             try:
-                self.close()  # 先关闭旧连接
-                # 连接时自动使用最新的数据库配置
+                # 仅在存在旧连接时关闭
+                if self.__con is not None:
+                    self.close()
+                # 创建新连接
                 self.__con = pymysql.connect(**self.__config)
+                self.__selected_db = self.__config.get('database')
                 self.__logger.info(f"MySQL连接成功(数据库: {self.__selected_db})")
-
                 return
             except pymysql.OperationalError as e:
                 self.__logger.error(f"连接失败(尝试 {attempt}/{self.reconnect_retries}): {e}")
                 if attempt == self.reconnect_retries:
                     raise RuntimeError(f"数据库连接失败, 重试{self.reconnect_retries}次后仍不可用: {e}") from e
+                time.sleep(1)  # 等待后重试
 
     def start(self):
-        """启动服务器连接"""
+        """启动连接，仅在未连接或连接无效时尝试"""
+        if self.__con is not None:
+            try:
+                self.__con.ping(reconnect=True)
+                self.__logger.debug("连接已存在且有效，无需重新连接")
+                return
+            except pymysql.Error:
+                self.__logger.debug("连接存在但无效，尝试重新连接...")
         self._safe_connect()
+
+    def _ensure_connection(self):
+        """确保连接有效，使用start方法处理连接逻辑"""
+        try:
+            self.start()
+        except:
+            if self.autoreconnect:
+                self.__logger.warning("自动重连失败，尝试重新连接...")
+                self.start()  # 再次尝试
+            else:
+                raise
 
     def __enter__(self):
         self._ensure_connection()
@@ -186,10 +192,9 @@ class Mysqlop:
         """安全关闭连接"""
         if self.__con:
             try:
-                self.__con.rollback()
                 if self.__con.open:
                     self.__con.close()
-                self.__logger.info("MYSQL数据库连接已安全关闭")
+                    self.__logger.info("MYSQL数据库连接已安全关闭")
             except Exception as e:
                 self.__logger.error(f"关闭连接时发生错误: {e}")
             finally:
@@ -273,8 +278,9 @@ class Mysqlop:
         """选择数据库，更新配置并重新连接"""
         self.__selected_db = dbname
         self.__config["database"] = dbname  # 更新连接配置中的数据库名
-        if self.__con:  # 若已连接，则重新连接以应用新配置
-            self._safe_connect()
+        self.__logger.info(f"选择数据库[{dbname}]")
+        # if self.__con:  # 若已连接，则重新连接以应用新配置
+        #     self._safe_connect()
 
     def create_db(self, dbname: str, bool_autoselect: bool = True):
         """
