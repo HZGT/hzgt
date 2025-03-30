@@ -13,6 +13,7 @@ import posixpath
 import cgi
 import urllib.parse
 import http.client
+from email.header import Header
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingTCPServer
 from http import HTTPStatus
@@ -403,6 +404,20 @@ def _ul_li_js():
         // 清除定时器
         clearTimeout(timer);
     });
+    
+    // document.querySelectorAll('li a').forEach(link => {
+    //     if (!link.href.endsWith('/')) {
+    //         link.addEventListener('click', function(e) {
+    //             e.preventDefault();
+    //             const downloadLink = document.createElement('a');
+    //             downloadLink.href = this.href;
+    //             downloadLink.download = '';
+    //             document.body.appendChild(downloadLink);
+    //             downloadLink.click();
+    //             document.body.removeChild(downloadLink);
+    //         });
+    //     }
+    // });
 
     """
 
@@ -437,7 +452,7 @@ def _list2ul_li(titlepath: str, _path: str, pathlist: list):
         if os.path.islink(fullname):
             displayname = name + "@"
         _r.append("<li><a href='%s' style='color: #000080;'>%s</a></li>"
-                  % (urllib.parse.quote(linkname,
+                  % (urllib.parse.quote(linkname, encoding='utf-8',
                                         errors='surrogatepass'),
                      html.escape(displayname, quote=False)))
     return f"""
@@ -494,53 +509,55 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.extensions_map = self.get_default_extensions_map()
         super().__init__(*args, **kwargs)
 
-    # def do_GET(self):
-    #     path = self.translate_path(self.path)
-    #     if os.path.isfile(path):
-    #         file_size = os.path.getsize(path)
-    #
-    #         fpath, filename = os.path.split(path)
-    #         basename, extension = os.path.splitext(filename)
-    #         self.send_response(200)
-    #
-    #         self.send_header("Content-Type", self.extensions_map.get(extension, "application/octet-stream") + "; charset=utf-8")
-    #
-    #         # 设置Content-Disposition头，使得文件被下载
-    #         self.send_header("Content-Disposition", f'attachment')
-    #         self.send_header("Content-Length", str(file_size))
-    #
-    #         self.end_headers()
-    #         # 现在发送文件数据
-    #         with open(path, 'rb') as file:
-    #             self.wfile.write(file.read())
-    #     else:
-    #         super().do_GET()
-
     def do_POST(self):
-        start_time = time.time()
-        content_length = int(self.headers['Content-Length'])
-        # 读取客户端发送的二进制文件数据
-        file_name = urllib.parse.unquote(self.headers["FileName"])
+        """
+        def do_POST(self):
+            start_time = time.time()
+            content_length = int(self.headers['Content-Length'])
+            # 读取客户端发送的二进制文件数据
+            file_name = urllib.parse.unquote(self.headers["FileName"])
+            try:
+                file_data = self.rfile.read(content_length)
+            except MemoryError as err:
+                self.send_error(413, "MemoryError")
+                return
+
+            with open(os.path.join(self.path, file_name), 'wb') as file:
+                file.write(file_data)
+
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'File uploaded successfully.')
+
+            end_time = time.time()
+            time_elapsed_ms = int((end_time - start_time) * 1000)
+            print(f"Update {file_name}[{content_length} Bytes] in {time_elapsed_ms} ms")
+
+        """
+        # 使用流式上传
         try:
-            file_data = self.rfile.read(content_length)
-        except MemoryError as err:
-            self.send_error(413, "MemoryError")
-            return
+            file_name = urllib.parse.unquote(self.headers["FileName"])
+            path = self.translate_path(self.path)
+            file_path = os.path.join(self.path, file_name)
+            print(self.path, path, file_path, file_name)
+            with open(file_path, 'wb') as f:
+                remaining = int(self.headers['Content-Length'])
+                while remaining > 0:
+                    chunk = self.rfile.read(min(remaining, 8192))  # 8KB缓冲区
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    remaining -= len(chunk)
 
-        with open(os.path.join(self.path, file_name), 'wb') as file:
-            file.write(file_data)
-
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'File uploaded successfully.')
-
-        end_time = time.time()
-        time_elapsed_ms = int((end_time - start_time) * 1000)
-        print(f"Update {file_name}[{content_length} Bytes] in {time_elapsed_ms} ms")
+            self.send_response(200)
+            self.end_headers()
+        except Exception as e:
+            self.send_error(500, str(e))
 
     def send_head(self):
         path = self.translate_path(self.path)
         f = None
+
         if os.path.isdir(path):
             parts = urllib.parse.urlsplit(self.path)
             if not parts.path.endswith('/'):
@@ -560,6 +577,37 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
                     break
             else:
                 return self.list_directory(path)
+
+        # 文件下载处理
+        if os.path.isfile(path):
+            try:
+
+                f = open(path, 'rb')
+                fs = os.fstat(f.fileno())
+
+                self.send_response(200)
+                self.send_header("Content-Type", self.guess_type(path))
+                filename = os.path.basename(path)
+                try:
+                    # RFC 5987编码处理
+                    encoded_filename = Header(filename, 'utf-8').encode()
+                    self.send_header("Content-Disposition",
+                                     f'attachment; filename="{encoded_filename}"')
+                except UnicodeEncodeError:
+                    # 兼容性处理
+                    self.send_header("Content-Disposition",
+                                     "attachment; filename*=UTF-8''{}".format(
+                                         urllib.parse.quote(filename, safe='')))
+                self.send_header("Content-Length", str(fs.st_size))
+                self.send_header("Last-Modified",
+                                 self.date_time_string(fs.st_mtime))
+                self.end_headers()
+                return f
+            except OSError as e:
+                self.send_error(404, "File not found")
+            except Exception as e:
+                self.send_error(500, str(e))
+
         ctype = self.guess_type(path)
         # check for trailing "/" which should return 404. See Issue17324
         # The test for this was added in test_httpserver.py
@@ -618,38 +666,6 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         except:
             f.close()
             raise
-
-    # def send_head(self):
-    #     path = self.translate_path(self.path)
-    #     f = None
-    #     if os.path.isdir(path):
-    #         if not self.path.endswith('/'):
-    #             self.send_response(301)
-    #             self.send_header("Location", self.path + "/")
-    #             self.end_headers()
-    #             return None
-    #         for index in "index.html", "index.htm":
-    #             index = os.path.join(path, index)
-    #             if os.path.exists(index):
-    #                 path = index
-    #                 break
-    #         else:
-    #             return self.list_directory(path)
-    #     ctype = self.guess_type(path)
-    #     if ctype.startswith('text/'):
-    #         ctype += '; charset=UTF-8'
-    #     try:
-    #         f = open(path, 'rb')
-    #     except IOError:
-    #         self.send_error(404, "File not found")
-    #         return None
-    #     self.send_response(200)
-    #     self.send_header("Content-type", ctype)
-    #     fs = os.fstat(f.fileno())
-    #     self.send_header("Content-Length", str(fs[6]))
-    #     self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
-    #     self.end_headers()
-    #     return f
 
     def list_directory(self, path):
         try:
@@ -732,8 +748,6 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
                 """
         base, ext = posixpath.splitext(path)
 
-        print(self.extensions_map.get(ext.lower()))
-
         if ext in self.extensions_map:
             return self.extensions_map[ext]
         ext = ext.lower()
@@ -759,6 +773,10 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
                bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
     """
     快速构建文件服务器. 阻塞进程. 默认使用 HTTP
+
+    >>> from hzgt.tools import Fileserver as fs
+
+    >>> fs()  # 在当前目录启动文件服务器
 
     :param path: 工作目录(共享目录路径)
     :param host: IP 默认为本地计算机的IP地址
