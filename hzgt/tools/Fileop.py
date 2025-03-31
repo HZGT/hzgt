@@ -11,6 +11,7 @@ import base64
 import email
 import posixpath
 import cgi
+import traceback
 import urllib.parse
 import http.client
 from email.header import Header
@@ -311,66 +312,79 @@ def _ul_li_js():
         ulElement.style.marginTop = `${h1Height + 20}px`;
     });
     
-    function generateBoundary() {
-        const characters = '0123456789abcdef';
-        let boundary = '----WebKitFormBoundary';
-        for (let i = 0; i < 16; i++) {
-            boundary += characters[Math.floor(Math.random() * characters.length)];
-        }
-        return boundary;
-    }
-    
     const uploadForm = document.getElementById('uploadForm');
     const fileInput = document.getElementById('file-input');
     const uploadProgress = document.getElementById('uploadProgress');
     const fileUploadpg = document.getElementById('file-uploadpg');
     let totalSize = 0;
-    let uploadedSize = 0;
+    let uploadedSizes = []; // 存储每个文件的上传进度
+    let completedCount = 0; // 完成上传的文件数
     
+    function formatSize(size) {
+        return size >= 1024 * 1024 
+            ? `${(size / (1024 * 1024)).toFixed(2)}MB` 
+            : `${(size / 1024).toFixed(2)}KB`;
+    }
+    
+    function updateProgress() {
+        const totalUploaded = uploadedSizes.reduce((acc, cur) => acc + cur, 0);
+        const percent = Math.min(100, (totalUploaded / totalSize * 100).toFixed(2));
+        const totalSizeFormatted = formatSize(totalSize);
+        const uploadedFormatted = formatSize(totalUploaded);
+        
+        fileUploadpg.textContent = `${percent}% [${uploadedFormatted}/${totalSizeFormatted}]`;
+        uploadProgress.value = percent;
+    }
+
     function submitFile() {
-        var form = document.getElementById('uploadForm');
-        var files = form.elements['file'].files;
-        for (var i = 0; i < files.length; i++) {
-            var xhr = new XMLHttpRequest();
-            var rtpathdivElement = document.getElementById('rtpath');
-            
-            xhr.open('POST', '/upload?FileName=' + encodeURIComponent(files[i].name), true);
-            const boundary = generateBoundary();
-            xhr.setRequestHeader('Content-Type', 'text/html; charset=UTF-8');
-            xhr.setRequestHeader('Content-Type', 'multipart/form-data; boundary=' + boundary);
-            xhr.setRequestHeader('FileName', rtpathdivElement.textContent + encodeURIComponent(files[i].name));
-            xhr.onload = function () {
-                if (this.status === 200) {
-                    alert('上传成功', this.response);
-                    location.reload();
-                } else {
-                    alert('上传失败', this.response);
-                }
-            };
-            xhr.upload.onprogress = function (e) {
+        const files = fileInput.files;
+        completedCount = 0;
+        uploadedSizes = new Array(files.length).fill(0);
+        
+        Array.from(files).forEach((file, index) => {
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            const path = document.getElementById('rtpath').textContent;
+    
+            formData.append('file', file);
+            formData.append('filename', path + file.name);
+    
+            xhr.upload.onprogress = e => {
                 if (e.lengthComputable) {
-                    uploadedSize = e.loaded;
-                    const percent = Math.round((uploadedSize / totalSize) * 100);
-                    const unit = totalSize >= 1024 * 1024?'MB' : 'KB';
-                    const uploadedSizeUnit = uploadedSize >= 1024 * 1024? uploadedSize / (1024 * 1024) : uploadedSize / 1024;
-                    const totalSizeUnit = totalSize >= 1024 * 1024? totalSize / (1024 * 1024) : totalSize / 1024;
-                    fileUploadpg.textContent = `${percent}% [${uploadedSizeUnit.toFixed(2)}${unit}/${totalSizeUnit.toFixed(2)}${unit}]`;
-                    uploadProgress.value = percent;
+                    uploadedSizes[index] = e.loaded;
+                    updateProgress();
                 }
             };
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === 4) {
+    
+            xhr.onload = () => {
+                completedCount++;
+                if (completedCount === files.length) {
                     if (xhr.status === 200) {
+                        // 所有文件完成后更新最终状态
+                        uploadedSizes[index] = file.size;
+                        updateProgress();
+                        setTimeout(() => {
+                            alert("所有文件上传成功");
+                            location.reload();
+                        }, 500);
                     } else {
-                        xhr.abort();  // 取消请求
-                        alert('文件发送失败, 文件过大或者网络连接错误');
+                        alert(`文件 ${file.name} 上传失败`);
                     }
                 }
             };
-            xhr.send(files[i]);
-        }
+    
+            xhr.onerror = () => {
+                alert(`文件 ${file.name} 上传失败`);
+                uploadedSizes[index] = 0; // 失败时重置进度
+            };
+    
+            xhr.open('POST', window.location.pathname + 'upload');
+            xhr.send(formData);
+        });
+    
         return false;
     }
+
     const clearButton = document.getElementById('clearselected');
     clearButton.addEventListener('click', function () {
         location.reload();
@@ -393,10 +407,9 @@ def _ul_li_js():
     });
     fileInput.addEventListener('change', function () {
         const files = this.files;
-        totalSize = 0;
-        for (let i = 0; i < files.length; i++) {
-            totalSize += files[i].size;
-        }
+        totalSize = Array.from(files).reduce((acc, file) => acc + file.size, 0);
+        uploadProgress.value = 0;
+        fileUploadpg.textContent = '0% [0.00KB/0.00KB]';
         // 清除定时器
         clearTimeout(timer);
     });
@@ -404,21 +417,6 @@ def _ul_li_js():
         // 清除定时器
         clearTimeout(timer);
     });
-    
-    // document.querySelectorAll('li a').forEach(link => {
-    //     if (!link.href.endsWith('/')) {
-    //         link.addEventListener('click', function(e) {
-    //             e.preventDefault();
-    //             const downloadLink = document.createElement('a');
-    //             downloadLink.href = this.href;
-    //             downloadLink.download = '';
-    //             document.body.appendChild(downloadLink);
-    //             downloadLink.click();
-    //             document.body.removeChild(downloadLink);
-    //         });
-    //     }
-    // });
-
     """
 
 
@@ -510,53 +508,73 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_POST(self):
-        """
-        def do_POST(self):
-            start_time = time.time()
-            content_length = int(self.headers['Content-Length'])
-            # 读取客户端发送的二进制文件数据
-            file_name = urllib.parse.unquote(self.headers["FileName"])
-            try:
-                file_data = self.rfile.read(content_length)
-            except MemoryError as err:
-                self.send_error(413, "MemoryError")
+        try:
+            # 确保Content-Type存在且正确
+            content_type = self.headers.get('Content-Type', '')
+            if not content_type.startswith('multipart/form-data'):
+                self.send_error(400, "Invalid Content-Type")
                 return
 
-            with open(os.path.join(self.path, file_name), 'wb') as file:
-                file.write(file_data)
+            # 完整环境变量设置
+            environ = {
+                'REQUEST_METHOD': 'POST',
+                'CONTENT_TYPE': content_type,
+                'CONTENT_LENGTH': self.headers.get('Content-Length', 0)
+            }
+
+            # 解析FormData
+            form_data = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ=environ,
+                keep_blank_values=True
+            )
+
+            # 获取文件字段和路径 ✅ 正确获取方式
+            if 'file' not in form_data or 'filename' not in form_data:
+                self.send_error(400, "Missing required fields")
+                return
+
+            file_item = form_data['file']  # 获取FieldStorage对象
+            filename = form_data.getvalue('filename', '')
+
+            # 安全处理路径和文件名
+            safe_filename = os.path.basename(filename)
+            # 构建完整保存路径 ✅
+            # 获取当前请求路径（去除末尾的upload）
+            current_dir = self.path
+            if current_dir.endswith('upload'):
+                current_dir = current_dir[:-6]
+            base_path = self.translate_path(current_dir)
+            # 确保目录存在
+            os.makedirs(base_path, exist_ok=True)
+            save_path = os.path.join(base_path, safe_filename)
+            print(self.path, base_path, self.translate_path(self.path), save_path)
+
+            # 写入文件（分块读取避免内存溢出）
+            if hasattr(file_item, 'file'):  # 检查是否为文件对象
+                with open(save_path, 'wb') as f:
+                    while True:
+                        chunk = file_item.file.read(8192)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            else:  # 处理小文件直接存储在内存中的情况
+                with open(save_path, 'wb') as f:
+                    f.write(file_item.value)
 
             self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.end_headers()
-            self.wfile.write(b'File uploaded successfully.')
+            self.wfile.write(f'成功上传文件: {safe_filename}'.encode('utf-8'))
 
-            end_time = time.time()
-            time_elapsed_ms = int((end_time - start_time) * 1000)
-            print(f"Update {file_name}[{content_length} Bytes] in {time_elapsed_ms} ms")
-
-        """
-        # 使用流式上传
-        try:
-            file_name = urllib.parse.unquote(self.headers["FileName"])
-            path = self.translate_path(self.path)
-            file_path = os.path.join(self.path, file_name)
-            print(self.path, path, file_path, file_name)
-            with open(file_path, 'wb') as f:
-                remaining = int(self.headers['Content-Length'])
-                while remaining > 0:
-                    chunk = self.rfile.read(min(remaining, 8192))  # 8KB缓冲区
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    remaining -= len(chunk)
-
-            self.send_response(200)
-            self.end_headers()
         except Exception as e:
-            self.send_error(500, str(e))
+            self.send_error(500, f"服务器错误: {str(e)}")
+            print(f"上传错误: {traceback.format_exc()}")
 
     def send_head(self):
         path = self.translate_path(self.path)
-        f = None
+        print(self.path, path)
 
         if os.path.isdir(path):
             parts = urllib.parse.urlsplit(self.path)
@@ -687,12 +705,18 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
             return None
         _list.sort(key=lambda a: a.lower())
         r = []
+        # 强制使用UTF-8编码生成响应
+        enc = 'utf-8'
+        r.append(f'<meta charset="{enc}">')
+        r.append(f'<meta http-equiv="Content-Type" content="text/html; charset={enc}">')
+
+        # 路径显示处理
         try:
-            displaypath = urllib.parse.unquote(self.path, errors='surrogatepass')
-        except UnicodeDecodeError:
-            displaypath = urllib.parse.unquote(path)
-        displaypath = html.escape(displaypath, quote=False)
-        enc = sys.getfilesystemencoding()
+            displaypath = urllib.parse.unquote(self.path, encoding=enc, errors='replace')
+        except:
+            displaypath = urllib.parse.unquote(self.path)
+
+        # enc = sys.getfilesystemencoding()
 
         ico_base64 = _convert_favicon_to_base64()
         title, li_list = _list2ul_li(displaypath, path, _list)  # 显示在浏览器窗口
@@ -721,7 +745,7 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         r.append("</script>")
 
         r.append('</body>\n</html>\n')
-        encoded = '\n'.join(r).encode(enc, 'surrogateescape')
+        encoded = '\n'.join(r).encode(enc, 'replace')  # 使用错误替换策略
 
         f = io.BytesIO()
         f.write(encoded)
@@ -786,10 +810,18 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
     :param keyfile: SSL私钥文件路径. 默认同目录下的 privkey.pem
     :return: None
     """
+    path = fix_path(path)
+    # 路径预处理：兼容Unicode路径
+    try:
+        # 显式转换为Unicode路径
+        path = os.path.abspath(path).encode('utf-8').decode(sys.getfilesystemencoding())
+    except UnicodeEncodeError:
+        path = os.path.abspath(path)
+
     try:
         os.listdir(path)
     except Exception as err:
-        raise err from None
+        raise ValueError(f"无效的共享目录路径: {path}") from err
 
     if not host:
         host = getip(-1)
@@ -807,7 +839,9 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
         httpd = ThreadingTCPServer((host, port), EnhancedHTTPRequestHandler)
         print(f"HTTP service running at http://{host}:{port}")
 
-    os.chdir(fix_path(path))  # 设置工作目录作为共享目录路径
+    os.chdir(path)  # 设置工作目录作为共享目录路径
+
+    httpd.max_buffer_size = 1024 * 1024 * 100  # 100MB缓冲区
 
     threading.Thread(target=httpd.serve_forever).start()
     return httpd
