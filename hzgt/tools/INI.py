@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 import subprocess
+import warnings
 from functools import partial
 
 subprocess.Popen = partial(subprocess.Popen, encoding='utf-8')  # 子进程设置全局编码改为 UTF-8, 且在 import execjs 前导入
 
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
+try:
+    from cryptography.hazmat.primitives.asymmetric import rsa, padding
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
+except:
+    warnings.warn("Use cmdline `pip install cryptography`", ImportWarning)
+    exit(-1)
 
 import execjs
 

@@ -8,7 +8,7 @@ from enum import Enum
 from logging import Logger
 from typing import Dict, Optional, Any, List, Tuple, Union
 
-from .core.SQLutil import SQLutilop, QueryBuilder, DBAdapter
+from .core import SQLutilop, QueryBuilder, DBAdapter
 from ...log import set_log
 
 
@@ -704,6 +704,10 @@ class SQLiteop(SQLutilop):
             self.logger.error(f"连接失败: {e}")
             raise RuntimeError(f"数据库连接失败: {e}") from None
 
+    def start(self):
+        """建立数据库连接"""
+        self.connect()
+
     def close(self):
         """关闭数据库连接"""
         if self.__connection:
@@ -715,6 +719,10 @@ class SQLiteop(SQLutilop):
                 self.logger.debug("SQLite连接已关闭")
             finally:
                 self.__connection = None
+
+    def disconnect(self):
+        """关闭数据库连接"""
+        self.close()
 
     def commit(self):
         """提交事务"""

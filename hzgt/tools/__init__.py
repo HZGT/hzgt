@@ -2,11 +2,11 @@
 from .MQTT import Mqttop
 
 # MYSQL
-from .SQL.MYSQL import Mysqlop
+from .SQL import Mysqlop
 # SQLITE
-from .SQL.SQLITE import SQLiteop
+from .SQL import SQLiteop
 # POSTGRESQL
-# from .SQL.POSTGRESQL import PostgreSQLop
+# from SQL import PostgreSQLop
 
 # 函数注册器 / 类注册器
 from .REGISTER import Func_Register, Class_Register

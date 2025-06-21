@@ -9,7 +9,7 @@
 # import psycopg2.extras
 # import psycopg2.pool
 #
-# from .core.SQLutil import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter, JoinType
+# from .core import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter, JoinType
 # from ... import set_log
 #
 # # PostgreSQL数据类型映射
@@ -1220,6 +1220,9 @@
 #                     raise RuntimeError(f"数据库连接失败, 重试{self.reconnect_retries}次后仍不可用: {e}") from e
 #                 time.sleep(1)  # 等待后重试
 #
+#     def start(self):
+#         self.connect()
+#
 #     def _ensure_connection(self):
 #         """
 #         确保数据库连接有效
@@ -1254,6 +1257,10 @@
 #                 self.logger.debug("PostgreSQL连接已归还到连接池")
 #             finally:
 #                 self.__connection = None
+#
+#     def disconnect(self):
+#         """关闭数据库连接"""
+#         self.close()
 #
 #     def commit(self):
 #         """提交事务"""

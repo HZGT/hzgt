@@ -11,7 +11,7 @@ import pymysql
 from pymysql.connections import Connection
 from pymysql.cursors import DictCursor
 
-from .core.SQLutil import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
+from .core import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
 from ...log import set_log
 
 # 有效的MySQL数据类型
@@ -874,6 +874,10 @@ class Mysqlop(SQLutilop):
                     raise RuntimeError(f"数据库连接失败, 重试{self.reconnect_retries}次后仍不可用: {e}") from None
                 time.sleep(1)  # 等待后重试
 
+    def start(self):
+        """建立数据库连接"""
+        self.connect()
+
     def _ensure_connection(self):
         """确保数据库连接有效"""
         if self.__connection is None:
@@ -901,6 +905,10 @@ class Mysqlop(SQLutilop):
                 self.logger.debug("MySQL连接已归还到连接池")
             finally:
                 self.__connection = None
+
+    def disconnect(self):
+        """关闭数据库连接"""
+        self.close()
 
     def commit(self):
         """提交事务"""
