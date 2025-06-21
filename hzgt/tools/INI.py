@@ -1,31 +1,34 @@
 # -*- coding: utf-8 -*-
 import subprocess
-from functools import partial, cache
+from functools import partial
 
 subprocess.Popen = partial(subprocess.Popen, encoding='utf-8')  # 子进程设置全局编码改为 UTF-8, 且在 import execjs 前导入
 
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
+
 import execjs
 
-DECRYPT_T = ("MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBANKpd+l3HQL/vu/T"
-             "AYHLYkdgIG70ljrCElyDS77180IY3Fsp8UyNlRnqKT/ks4gNE8qxNv1lhkRRTZci"
-             "MQg28+hjH2sfhAmq2gYqSziCe5GM7Um+JF6VI60M7dgmblABh3t+G+KUdK21lNID"
-             "8rVJU6UJF+bwI3bQdFeJgpGfNs6LAgMBAAECgYEAm2WXpwjOxd+SIactfWliXfRy"
-             "+GZES6PNl6Dix0L25tMf+b++2BG44xzwwMkcBkhfSS3gupuhp9OxwMLgGIcw8+wE"
-             "fxJCpmoEC9F2uni0KvE2oEnNean1bR6rPeSf1xRMWVTRieJWIzyR0DhzHMQ9ii0n"
-             "oPuhDWNsUl2YmRFrYYECQQD9OxLqLvtcBAZNMNAZeCCV7npCXdNrX1C4k5EZ9yMQ"
-             "g26znefPDikdhuP4x067lPScUytrgCeuWNNp6HVer0QJAkEA1Pc43cI40NXMk0A3"
-             "nGg0JTSE1mbpbIk6CT2zXyuUiiPgjsmP6TJ3cnOeQxI1ld3KwqvVNxpNNAScAY0G"
-             "+aHq8wJBAOklYYXRWcXfQroBDifU7RN9rHy8C/JYoGZAHyEr49HJYLvoz0tYe0xf"
-             "LDeZsQiN3SSsglaIeIBR8dwZlS5m6ZkCQQDIYIBJ7veETtW4asCoUkdWBk9CZ/wT"
-             "Gh7YGQzPa/LL8yvTTYUxdkF7F5v+IYD3rIKdng30VbP0UK30q5u3f4jPAkAPs/yI"
-             "3/Z3FkzrTxxPOZT4ZjjKIOxe4I7vVJVhtzV9ItwuA83WyuslJY758kFz6AxrhT8K"
-             "F30CPO1sEazBH9xD")  # 解密密钥
+PRIVATEKEY = ("MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBANKpd+l3HQL/vu/T"
+              "AYHLYkdgIG70ljrCElyDS77180IY3Fsp8UyNlRnqKT/ks4gNE8qxNv1lhkRRTZci"
+              "MQg28+hjH2sfhAmq2gYqSziCe5GM7Um+JF6VI60M7dgmblABh3t+G+KUdK21lNID"
+              "8rVJU6UJF+bwI3bQdFeJgpGfNs6LAgMBAAECgYEAm2WXpwjOxd+SIactfWliXfRy"
+              "+GZES6PNl6Dix0L25tMf+b++2BG44xzwwMkcBkhfSS3gupuhp9OxwMLgGIcw8+wE"
+              "fxJCpmoEC9F2uni0KvE2oEnNean1bR6rPeSf1xRMWVTRieJWIzyR0DhzHMQ9ii0n"
+              "oPuhDWNsUl2YmRFrYYECQQD9OxLqLvtcBAZNMNAZeCCV7npCXdNrX1C4k5EZ9yMQ"
+              "g26znefPDikdhuP4x067lPScUytrgCeuWNNp6HVer0QJAkEA1Pc43cI40NXMk0A3"
+              "nGg0JTSE1mbpbIk6CT2zXyuUiiPgjsmP6TJ3cnOeQxI1ld3KwqvVNxpNNAScAY0G"
+              "+aHq8wJBAOklYYXRWcXfQroBDifU7RN9rHy8C/JYoGZAHyEr49HJYLvoz0tYe0xf"
+              "LDeZsQiN3SSsglaIeIBR8dwZlS5m6ZkCQQDIYIBJ7veETtW4asCoUkdWBk9CZ/wT"
+              "Gh7YGQzPa/LL8yvTTYUxdkF7F5v+IYD3rIKdng30VbP0UK30q5u3f4jPAkAPs/yI"
+              "3/Z3FkzrTxxPOZT4ZjjKIOxe4I7vVJVhtzV9ItwuA83WyuslJY758kFz6AxrhT8K"
+              "F30CPO1sEazBH9xD")  # 解密密钥
 
-ENCRYPT_R = ("MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDSqXfpdx0C/77v0wGBy2JHYCBu"
+PUBLICKEY = ("MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDSqXfpdx0C/77v0wGBy2JHYCBu"
              "9JY6whJcg0u+9fNCGNxbKfFMjZUZ6ik/5LOIDRPKsTb9ZYZEUU2XIjEINvPoYx9r"
              "H4QJqtoGKks4gnuRjO1JviRelSOtDO3YJm5QAYd7fhvilHSttZTSA/K1SVOlCRfm"
              "8CN20HRXiYKRnzbOiwIDAQAB")  # 加密密钥
-
 
 # 以下内容为 ini-parser 库[版本 1.2.1 / MIT许可] 的内容
 # The following is the content of the library called ini-parser [version 1.2.1 / MIT License].
@@ -99,8 +102,7 @@ EMPTY_KEY_SENTINEL = object()
 def decode(string, on_empty_key=EMPTY_KEY_SENTINEL):
     out = {}
     p = out
-    section = None
-    regex = re.compile(r'^\[([^\]]*)\]$|^([^=]+)(=(.*))?$', re.IGNORECASE)
+    regex = re.compile(r'^\[([^]]*)]$|^([^=]+)(=(.*))?$', re.IGNORECASE)
     lines = re.split(r'[\r\n]+', string)
 
     for line in lines:
@@ -268,7 +270,7 @@ def getbyjs(js_path_or_script: str, funcname: str, *args, encoding: str = 'utf -
     :return: js函数执行后的返回结果
     """
     try:
-        with open(js_path_or_script, 'r', encoding = encoding) as f:
+        with open(js_path_or_script, 'r', encoding=encoding) as f:
             res = f.read()
     except:
         res = js_path_or_script
@@ -280,7 +282,7 @@ def getbyjs(js_path_or_script: str, funcname: str, *args, encoding: str = 'utf -
     return ctx.call(funcname, *args)  # 执行函数并返回结果
 
 
-def decrypt_rsa(text: str, keyt: str = DECRYPT_T):
+def decrypt_rsa(text: str, keyt: str = PRIVATEKEY):
     """
     RSA解密
 
@@ -290,7 +292,7 @@ def decrypt_rsa(text: str, keyt: str = DECRYPT_T):
     return getbyjs("rsa.js", 'decryptRSA', text, keyt)
 
 
-def encrypt_rsa(text: str, keyr: str = ENCRYPT_R):
+def encrypt_rsa(text: str, keyr: str = PUBLICKEY):
     """
     RSA加密
 
@@ -305,7 +307,7 @@ def ende_dict(nested_dict: dict, endefunc=None, args: tuple = None, options: lis
     对字典的值进行加解密
 
 
-    >>> from hzgt.tools import ende_dict, ENCRYPT_R, DECRYPT_T, encrypt_rsa, decrypt_rsa
+    >>> from hzgt.tools import ende_dict, PUBLICKEY, PRIVATEKEY, encrypt_rsa, decrypt_rsa
     >>>
     >>> my_dict = {  # 待加密的嵌套字典
     >>>     "key1": "value1",
@@ -324,10 +326,10 @@ def ende_dict(nested_dict: dict, endefunc=None, args: tuple = None, options: lis
     >>> }
     >>> print(my_dict)
     >>> options = [["key1"], ["key2", "subkey1", ["uky", ["sub2", "subsubkey2"]]]]  # 待加密的值对应的键
-    >>> enresult = ende_dict(my_dict, endefunc=encrypt_rsa, args=(ENCRYPT_R,), options=options)  # 通过加密函数以及参数进行加密
+    >>> enresult = ende_dict(my_dict, endefunc=encrypt_rsa, args=(PUBLICKEY,), options=options)  # 通过加密函数以及参数进行加密
     >>> print(enresult)
     >>>
-    >>> deresult = ende_dict(enresult, endefunc=decrypt_rsa, args=(DECRYPT_T,), options=options)  # 解密
+    >>> deresult = ende_dict(enresult, endefunc=decrypt_rsa, args=(PRIVATEKEY,), options=options)  # 解密
     >>> print(deresult)
 
     # OUTPUT:
@@ -425,3 +427,173 @@ def ende_dict(nested_dict: dict, endefunc=None, args: tuple = None, options: lis
         encrypted_dict[key] = encrypted_value
     return encrypted_dict
 
+
+# ======================================================================================================================
+class RSAEncryptor:
+    """
+    RSA 加解密器
+    """
+
+    def __init__(self, private_key: RSAPrivateKey = None, public_key: RSAPublicKey = None,
+                 private_pem_path: str = None, public_pem_path: str = None,
+                 private_pem_str: str = None, public_pem_str: str = None):
+        """
+        初始化 RSA 加解密器
+        :param private_key: 私钥对象
+        :param public_key: 公钥对象
+        :param private_pem_path: 私钥文件路径
+        :param public_pem_path: 公钥文件路径
+        :param private_pem_str: 私钥字符串
+        :param public_pem_str: 公钥字符串
+        """
+        self.private_key = private_key
+        self.public_key = public_key
+
+        # 优先级：对象 > 字符串 > 文件路径
+
+        # 如果提供了私钥对象，则不处理其他输入
+        if private_key is None:
+            # 如果提供了私钥字符串，则加载私钥
+            if private_pem_str:
+                pem_str = self.__ensure_pem_format(private_pem_str, is_private=True)
+                self.private_key = serialization.load_pem_private_key(
+                    pem_str.encode(),
+                    password=None
+                )
+            elif private_pem_path:
+                with open(private_pem_path, "rb") as f:
+                    self.private_key = serialization.load_pem_private_key(
+                        f.read(),
+                        password=None
+                    )
+
+        # 如果提供了公钥对象，则不处理其他输入
+        if public_key is None:
+            # 如果提供了公钥字符串，则加载公钥
+            if public_pem_str:
+                pem_str = self.__ensure_pem_format(public_pem_str, is_private=False)
+                self.public_key = serialization.load_pem_public_key(
+                    pem_str.encode()
+                )
+            elif public_pem_path:
+                with open(public_pem_path, "rb") as f:
+                    self.public_key = serialization.load_pem_public_key(f.read())
+
+        # 如果只提供了私钥，自动提取公钥
+        if self.private_key and not self.public_key:
+            self.public_key = self.private_key.public_key()
+
+        # 如果两者都没有提供，抛出异常
+        if self.private_key is None and self.public_key is None:
+            raise ValueError("必须提供至少一个密钥、文件路径或 PEM 字符串")
+
+    def __ensure_pem_format(self, key_data: str, is_private: bool = False) -> str:
+        """确保字符串具有正确的 PEM 格式"""
+        if "-----BEGIN" in key_data:
+            return key_data  # 已经是完整 PEM 格式，直接返回
+
+        if is_private:
+            header = "-----BEGIN PRIVATE KEY-----"
+            footer = "-----END PRIVATE KEY-----"
+        else:
+            header = "-----BEGIN PUBLIC KEY-----"
+            footer = "-----END PUBLIC KEY-----"
+
+        # 去除空白并插入换行
+        return f"{header}\n{key_data.strip()}\n{footer}"
+
+    def generate_keys(self):
+        """生成 RSA 公钥和私钥"""
+        self.private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+        self.public_key = self.private_key.public_key()
+        return self.public_key, self.private_key
+
+    def save_as_pem(self, private_key_file_path: str = "private.pem", public_key_file_path: str = "public.pem"):
+        """将公钥保存为 PEM 格式的文件"""
+        if self.private_key is None:
+            raise ValueError("Private key not set or generated.")
+        if self.public_key is None:
+            raise ValueError("Public key not set or generated.")
+
+        private_pem = self.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        with open(private_key_file_path, "wb") as f:
+            f.write(private_pem)
+
+        public_pem = self.public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        with open(public_key_file_path, "wb") as f:
+            f.write(public_pem)
+
+    def get_private_key_pem(self):
+        """获取 PEM 格式的私钥"""
+        if self.private_key is None:
+            raise ValueError("Private key not generated yet.")
+        return self.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+    def get_public_key_pem(self):
+        """获取 PEM 格式的公钥"""
+        if self.public_key is None:
+            raise ValueError("Public key not generated yet.")
+        return self.public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+
+    def encrypt(self, data):
+        """使用公钥加密数据"""
+        if self.public_key is None:
+            raise ValueError("Public key not set or generated.")
+        return self.public_key.encrypt(
+            data.encode(),
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+
+    def decrypt(self, encrypted_data):
+        """使用私钥解密数据"""
+        if self.private_key is None:
+            raise ValueError("Private key not set or generated.")
+        return self.private_key.decrypt(
+            encrypted_data,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        ).decode()
+
+
+# 示例用法
+if __name__ == "__main__":
+    encryptor = RSAEncryptor(private_pem_str=PRIVATEKEY, public_pem_str=PUBLICKEY)
+
+    # 生成密钥
+    encryptor.generate_keys()
+
+    # 打印密钥（PEM 格式）
+    print("Public Key:\n", encryptor.get_public_key_pem().decode())
+    print("Private Key:\n", encryptor.get_private_key_pem().decode())
+
+    # 加密和解密示例
+    original_data = "Hello, this is a secret message!"
+    encrypted = encryptor.encrypt(original_data)
+    print("Encrypted Data:", encrypted)
+
+    decrypted = encryptor.decrypt(encrypted)
+    print("Decrypted Data:", decrypted)

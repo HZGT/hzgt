@@ -1,31 +1,26 @@
-import mimetypes
-import os
-import sys
-import time
+import base64
+import cgi
 import datetime
-import socket
-import ssl
+import email
 import html
 import io
-import base64
-import email
+import mimetypes
+import os
 import posixpath
-import cgi
+import socket
+import ssl
+import sys
+import threading
 import traceback
+import urllib
 import urllib.parse
-import http.client
 from email.header import Header
+from http import HTTPStatus
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingTCPServer
-from http import HTTPStatus
-import urllib
-import threading
-from typing import Union
+from typing import Union, List
 
 from .INI import readini
-
-import socket
-from typing import Union, List
 
 
 def get_ipv4_addresses() -> List[str]:
@@ -549,7 +544,7 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
             # 确保目录存在
             os.makedirs(base_path, exist_ok=True)
             save_path = os.path.join(base_path, safe_filename)
-            print(self.path, base_path, self.translate_path(self.path), save_path)
+            # print(self.path, base_path, self.translate_path(self.path), save_path)
 
             # 写入文件（分块读取避免内存溢出）
             if hasattr(file_item, 'file'):  # 检查是否为文件对象
@@ -574,7 +569,7 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def send_head(self):
         path = self.translate_path(self.path)
-        print(self.path, path)
+        # print(self.path, path)
 
         if os.path.isdir(path):
             parts = urllib.parse.urlsplit(self.path)

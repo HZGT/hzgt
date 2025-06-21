@@ -19,7 +19,25 @@ LOG_LEVEL_DICT = {
     logging.INFO: logging.INFO,
     logging.WARNING: logging.WARNING,
     logging.ERROR: logging.ERROR,
-    logging.CRITICAL: logging.CRITICAL
+    logging.CRITICAL: logging.CRITICAL,
+
+    "notset": logging.NOTSET,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARNING,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "fatal": logging.CRITICAL,
+    "critical": logging.CRITICAL,
+
+    "NOTSET": logging.NOTSET,
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARN": logging.WARNING,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "FATAL": logging.CRITICAL,
+    "CRITICAL": logging.CRITICAL,
 }
 
 LEVEL_NAME_DICT = {
@@ -36,15 +54,33 @@ LEVEL_NAME_DICT = {
     logging.WARNING: "WARNING",
     logging.ERROR: "ERROR",
     logging.CRITICAL: "CRITICAL",
+
+    "notset": "NOTSET",
+    "debug": "DEBUG",
+    "info": "INFO",
+    "warn": "WARNING",
+    "warning": "WARNING",
+    "error": "ERROR",
+    "fatal": "CRITICAL",
+    "critical": "CRITICAL",
+
+    "NOTSET": "NOTSET",
+    "DEBUG": "DEBUG",
+    "INFO": "INFO",
+    "WARN": "WARNING",
+    "WARNING": "WARNING",
+    "ERROR": "ERROR",
+    "FATAL": "CRITICAL",
+    "CRITICAL": "CRITICAL",
 }
 
 
 @vargs({"level": set(LOG_LEVEL_DICT.keys())})
-def set_log(name: Optional[str], logfilename: str, level: int = 2,
+def set_log(name: str, logfilename: Optional[str] = None, level: int = 2,
             print_prefix: str = f'{restrop("[%(name)s %(asctime)s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s", f=1)}',
             file_prefix: str = '[%(name)s %(asctime)s] [%(levelname)s]\t%(message)s',
             datefmt: str = "%Y-%m-%d %H:%M:%S",
-            maxBytes: int = 2 * 1024 * 1024, backupCount: int = 3, encoding = "utf-8"):
+            maxBytes: int = 2 * 1024 * 1024, backupCount: int = 3, encoding="utf-8"):
     """
     创建一个具有指定名称、时间、级别、日志的日志记录器
 
@@ -56,7 +92,7 @@ def set_log(name: Optional[str], logfilename: str, level: int = 2,
         - 4 -- logging.ERROR
         - 5 -- logging.CRITICAL
     :param name: 
-    :param logfilename: 日志文件路径  ***.log
+    :param logfilename: 日志文件路径 ***.log 默认 root.log
     :param level: 日志级别，默认2 -- logging.INFO
     :param print_prefix:
     :param file_prefix:
@@ -66,6 +102,10 @@ def set_log(name: Optional[str], logfilename: str, level: int = 2,
     :param encoding: 编码，默认utf-8
     :return:
     """
+    # 自动生成日志文件名（处理name为None的情况）
+    if logfilename is None:
+        logfilename = f"{name if name is not None else 'root'}.log"
+
     ensure_file(logfilename)
 
     # print("日志路径: " + restrop(f"{os.path.abspath(logfilename)}", f=4))
@@ -91,4 +131,3 @@ def set_log(name: Optional[str], logfilename: str, level: int = 2,
     logger.addHandler(log_file)
 
     return logger
-
