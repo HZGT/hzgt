@@ -32,9 +32,7 @@ class AutoConfig:
         >>> class AppConfig(AutoConfig):
         >>>     DEBUG: bool = False
         >>>     DB_CONFIG: DatabaseConfig
-        >>>
-        >>> # 环境变量可以这样设置：
-        >>> # DB_CONFIG='{"HOST": "db.example.com", "PORT": 5432, "USERNAME": "user", "PASSWORD": "pass"}'
+
     """
 
     # 用于防止循环引用导致的无限递归
