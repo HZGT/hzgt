@@ -17,11 +17,15 @@ from .Decorator import gettime, vargs
 # 日志
 from .log import set_log
 
+# 自动配置类
+from .AutoConfig import AutoConfig
+
 __all__ = [
     "version",
     "pic", "restrop",
     "bit_conversion", "get_file_size",
     "gettime", "vargs",
-    "set_log"
+    "set_log",
+    "AutoConfig"
 ]
 

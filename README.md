@@ -1,5 +1,6 @@
 # hzgt
 [![img](https://img.shields.io/badge/license-MIT-blue.svg)](https://gitee.com/HZGT/hzgt/tree/master/LICENSE) [![PyPI version](https://img.shields.io/pypi/v/hzgt.svg)](https://pypi.python.org/pypi/hzgt/)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/HZGT/hzgt)
 
 # 目录 DIRECTORY
 * [简介](#introduction)
@@ -10,6 +11,7 @@
   * 类[MYSQL](#class-mysql)
   * 类[Ftpserver](#class-ftpserver)
   * 类[Smtpop](#class-smtpop)
+  * 类[AutoConfig](#AutoConfig)
   
   * 函数[Fileserver](#func-fileserver)
   * 函数[readini](#func-readini)
@@ -149,6 +151,16 @@ The `Ftpserver` class provides the API of the `FTP server`.
 The `Smtpop` class provides a convenient function for sending emails.
 
 详见 [SMTP.md](doc/SMTP.md)
+
+## class AutoConfig
+
+`类[class]: AutoConfig()`
+
+`AutoConfig` 类提供了自动获取配置的功能.
+
+The `AutoConfig` class provides the ability to automatically obtain configuration.
+
+详见 [AutoConfig.md](doc/AutoConfig.md)
 
 ## func Fileserver
 
