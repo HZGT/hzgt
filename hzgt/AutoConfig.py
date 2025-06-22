@@ -2,6 +2,10 @@ import inspect
 import json
 import os
 from typing import Any, Dict, Type, TypeVar, get_type_hints, List, Set, Tuple, Union, get_args, get_origin
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv(".env")
 
 T = TypeVar('T', bound='AutoConfig')
 
@@ -94,12 +98,12 @@ class AutoConfig:
                 try:
                     value = AutoConfig._convert_value(env_value, field_type)
                 except Exception as e:
-                    raise ValueError(f"环境变量 '{name}' 的值无法转换为类型 {field_type}: {e}") from None
+                    raise ValueError(f"环境变量 '{name}' 的值无法转换为类型 {field_type}") from None
             elif has_kwarg:
                 try:
                     value = AutoConfig._convert_value(kwarg_value, field_type)
                 except Exception as e:
-                    raise ValueError(f"参数 '{name}' 的值 '{kwarg_value}' 无法转换为类型 {field_type}: {e}") from None
+                    raise ValueError(f"参数 '{name}' 的值 '{kwarg_value}' 无法转换为类型 {field_type}") from None
             elif has_default:
                 value = default_value
             else:

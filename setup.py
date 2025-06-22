@@ -93,6 +93,8 @@ setup(
                       "paho-mqtt",  # MQTT
                       "pyftpdlib",  # FTP
                       "PyExecJS",  # js
+                      "dotenv", # AutoConfig
+                      # "cryptography", # MYSQL
                       ],  # 需要安装的依赖包
     extras_require={
         "MYSQL": "cryptography",
