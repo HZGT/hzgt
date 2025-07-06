@@ -9,7 +9,7 @@ from logging import Logger
 from typing import Dict, Optional, Any, List, Tuple, Union
 
 from .core import SQLutilop, QueryBuilder, DBAdapter
-from ...log import set_log
+from hzgt.core.log import set_log
 
 
 class JoinType(Enum):

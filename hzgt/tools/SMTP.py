@@ -1,21 +1,18 @@
 # -*- coding: utf-8 -*-
 import os
 import smtplib
-import ssl
 import imaplib
 import datetime
-import base64
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from email.parser import Parser
 import email.header
 import email
 from typing import Union, Iterable
 
-from ..log import set_log
+from hzgt.core.log import set_log
 
 
 class Smtpop:

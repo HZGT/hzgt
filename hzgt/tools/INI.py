@@ -1,17 +1,12 @@
 # -*- coding: utf-8 -*-
 import subprocess
-import warnings
 from functools import partial
 
 subprocess.Popen = partial(subprocess.Popen, encoding='utf-8')  # 子进程设置全局编码改为 UTF-8, 且在 import execjs 前导入
 
-try:
-    from cryptography.hazmat.primitives.asymmetric import rsa, padding
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
-except:
-    warnings.warn("Use cmdline `pip install cryptography`", ImportWarning)
-    exit(-1)
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 
 import execjs
 
@@ -492,7 +487,8 @@ class RSAEncryptor:
         if self.private_key is None and self.public_key is None:
             raise ValueError("必须提供至少一个密钥、文件路径或 PEM 字符串")
 
-    def __ensure_pem_format(self, key_data: str, is_private: bool = False) -> str:
+    @staticmethod
+    def __ensure_pem_format(key_data: str, is_private: bool = False) -> str:
         """确保字符串具有正确的 PEM 格式"""
         if "-----BEGIN" in key_data:
             return key_data  # 已经是完整 PEM 格式，直接返回

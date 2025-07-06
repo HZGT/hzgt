@@ -84,7 +84,7 @@ click.formatting.wrap_text = wrap_text
 
 import os
 
-from .CONST import CURRENT_USERNAME
+from hzgt.core.CONST import CURRENT_USERNAME
 from .tools import getip, Ftpserver, Fileserver
 
 HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  # 让 -h 与 --help 功能一样

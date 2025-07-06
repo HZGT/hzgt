@@ -3,29 +3,31 @@ from .__version import __version__
 version = __version__
 
 # 字符串操作
-from .strop import pic, restrop
+from hzgt.core import pic, restrop
 
 # 字节单位转换
-from .fileop import bit_conversion
+from hzgt.core import bitconv
 
 # 获取文件大小
-from .fileop import get_file_size
+from hzgt.core import getfsize, ensure_file
 
 # 装饰器 gettime获取函数执行时间
-from .Decorator import gettime, vargs
+from hzgt.core import gettime, vargs
 
 # 日志
-from .log import set_log
+from hzgt.core import set_log
 
 # 自动配置类
-from .AutoConfig import AutoConfig
+from hzgt.core import AutoConfig
+
 
 __all__ = [
+    # core
     "version",
     "pic", "restrop",
-    "bit_conversion", "get_file_size",
+    "bitconv", "getfsize", "ensure_file",
     "gettime", "vargs",
     "set_log",
-    "AutoConfig"
+    "AutoConfig",
 ]
 

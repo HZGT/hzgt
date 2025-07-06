@@ -10,8 +10,8 @@ import paho.mqtt.client as mqtt
 from paho.mqtt.properties import Properties
 from paho.mqtt.packettypes import PacketTypes
 
-from ..log import set_log
-from ..Decorator import vargs
+from hzgt.core.log import set_log
+from hzgt.core.Decorator import vargs
 
 
 def generate_random_clientid():

@@ -5,8 +5,8 @@ import logging
 import os
 import time
 
-from ..fileop import get_file_size, bit_conversion
-from ..strop import restrop
+from hzgt.core.fileop import getfsize, bitconv
+from hzgt.core.strop import restrop
 
 from tqdm import trange
 
@@ -269,7 +269,7 @@ class Ftpclient:
         if not os.path.exists(savepath):
             os.makedirs(savepath)
 
-        sfsize = bit_conversion(self.size(server_filename))  # 转换总大小
+        sfsize = bitconv(self.size(server_filename))  # 转换总大小
         print(f"[{restrop(server_filename)}] 文件大小: {restrop(sfsize[0], f=4)} {sfsize[1]}")
         with (trange(sfsize[2], desc='下载中', unit="B", unit_divisor=1024, unit_scale=True, ncols=100) as tbar,
               open(os.path.join(savepath, savename), "wb") as file_handle):  # 以写模式在本地打开文件
@@ -292,7 +292,7 @@ class Ftpclient:
         file_name, extension = os.path.splitext(os.path.basename(local_file))
         server_savename = server_savename if server_savename else file_name + extension  # 默认使用本地命名
 
-        lfsize = get_file_size(local_file)  # 获取文件大小
+        lfsize = getfsize(local_file)  # 获取文件大小
         print(f"[{restrop(local_file)}] 文件大小: {restrop(lfsize[0], f=4)} {lfsize[1]}")
         time.sleep(0.17)
         with (trange(lfsize[2], desc='上传中', unit="B", unit_divisor=1024, unit_scale=True, ncols=100) as tbar,

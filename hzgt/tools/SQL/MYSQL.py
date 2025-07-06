@@ -12,7 +12,7 @@ from pymysql.connections import Connection
 from pymysql.cursors import DictCursor
 
 from .core import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
-from ...log import set_log
+from hzgt.core.log import set_log
 
 # 有效的MySQL数据类型
 VALID_MYSQL_DATA_TYPES = ['TINYINT', 'SMALLINT', 'INT', 'INTEGER', 'BIGINT', 'FLOAT', 'DOUBLE', 'DECIMAL', 'DATE',
