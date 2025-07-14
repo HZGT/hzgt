@@ -79,10 +79,10 @@ LEVEL_NAME_DICT = {
 @vargs({"level": set(LOG_LEVEL_DICT.keys())})
 def set_log(
         name: Optional[str] = None,
-        logfilepath: Optional[str] = ".",
+        fpath: Optional[str] = ".",
         level: Union[int, str] = 2,
-        print_prefix: str = f'{restrop("[%(name)s %(asctime)s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s", f=1)}',
-        file_prefix: str = '[%(name)s %(asctime)s] [%(levelname)s]\t%(message)s',
+        print_prefix: str = f'{restrop("[%(asctime)s | %(filename)s[%(lineno)-3s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s", f=1)}',
+        file_prefix: str = '[%(asctime)s | %(filename)s[%(lineno)-3s] [%(levelname)s]\t%(message)s',
         datefmt: str = "%Y-%m-%d %H:%M:%S",
         maxBytes: int = 2 * 1024 * 1024,
         backupCount: int = 3,
@@ -93,7 +93,7 @@ def set_log(
     创建或获取日志记录器，支持控制台和文件日志输出
 
     :param name: 日志器名称，None 表示根日志器
-    :param logfilepath: 日志文件存放目录路径 默认当前目录 如果为 None 则不输出日志文件
+    :param fpath: 日志文件存放目录路径 默认当前目录 如果为 None 则不输出日志文件
     :param level: 日志级别，支持多种格式 (默认: INFO/2)
     :param print_prefix: 控制台日志格式
     :param file_prefix: 文件日志格式
@@ -128,10 +128,10 @@ def set_log(
     logger.addHandler(stream_handler)
 
     # 创建文件处理器（如果指定了日志文件路径）
-    if logfilepath:
+    if fpath:
         # 确定日志文件名
         log_name = f"{name if name else 'root'}.log"
-        logfile = os.path.join(logfilepath, log_name)
+        logfile = os.path.join(fpath, log_name)
 
         # 确保日志文件存在
         ensure_file(logfile)

@@ -1,4 +1,4 @@
 git add .
-git commit -m "Add the class AutoConfig"
+git commit -m "FIX the bug about FileServer()"
 git push
 pause

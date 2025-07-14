@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
-import os
 import re
 import time
 from contextlib import contextmanager
 from enum import Enum
 from logging import Logger
-from typing import Dict, Optional, Any, List, Tuple, Union
+from typing import Dict, Optional, Any, List, Tuple, Union, Generator, Callable
 
 import pymysql
 from pymysql.connections import Connection
-from pymysql.cursors import DictCursor
+from pymysql.cursors import DictCursor, SSCursor
 
-from .core import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
 from hzgt.core.log import set_log
+from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
 
 # 有效的MySQL数据类型
 VALID_MYSQL_DATA_TYPES = ['TINYINT', 'SMALLINT', 'INT', 'INTEGER', 'BIGINT', 'FLOAT', 'DOUBLE', 'DECIMAL', 'DATE',
@@ -843,7 +842,7 @@ class Mysqlop(SQLutilop):
         Returns:
             Logger: 日志记录器实例
         """
-        return set_log("hzgt.mysql", os.path.join("logs", "mysql.log"))
+        return set_log("hzgt.mysql", "logs")
 
     def __enter__(self):
         """上下文管理器入口"""
@@ -1019,7 +1018,7 @@ class Mysqlop(SQLutilop):
                 raise RuntimeError(e) from None
 
     def query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
-              bool_dict: bool = False) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+              bool_dict: bool = False, size: Optional[int] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """
         执行查询并返回结果集
 
@@ -1027,6 +1026,7 @@ class Mysqlop(SQLutilop):
             sql: SQL查询语句
             args: 查询参数
             bool_dict: 返回格式为 True 字典Dict[str, Any] False 列表List[Dict[str, Any]]
+            size: 批量获取大小，若不指定则一次性获取全部结果
 
         Returns:
             查询结果列表，每项为一个字典
@@ -1036,16 +1036,272 @@ class Mysqlop(SQLutilop):
         try:
             cursor = self.__connection.cursor(DictCursor)
             cursor.execute(sql, args)
-            result = list(cursor.fetchall())
-            if bool_dict:
+
+            if size is None:
+                # 原有行为，一次获取所有结果
+                result = list(cursor.fetchall())
+            else:
+                # 分批获取
+                result = []
+                while True:
+                    batch = cursor.fetchmany(size)
+                    if not batch:
+                        break
+                    result.extend(batch)
+
+            if bool_dict and result:
                 return {key: [item[key] for item in result] for key in result[0]}
-            return result  # 转换为普通列表，而不是pymysql结果对象
+            return result
         except Exception as e:
             self.logger.error(f"执行查询失败: {sql} | {e}")
             raise RuntimeError(e) from None
         finally:
             if cursor:
                 cursor.close()
+
+    def stream_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
+                     size: int = 5000, bool_dict: bool = False,
+                     use_server_side_cursor: bool = True) -> Generator[
+            Union[Dict[str, Any], Dict[str, List]], None, None]:
+        """
+        流式执行查询，以迭代器方式返回结果，适合大数据量查询
+
+        Args:
+            sql: SQL查询语句
+            args: 查询参数
+            size: 每次获取的批量大小
+            bool_dict: 是否以字典形式返回结果 {列名: [列值列表]}
+            use_server_side_cursor: 是否使用服务器端游标，可减少内存占用
+
+        Yields:
+            如果bool_dict为False: 每条查询结果记录
+            如果bool_dict为True: 批量记录的字典表示 {列名: [批次中该列的所有值]}
+        """
+        self._ensure_connection()
+        cursor = None
+        try:
+            # 添加SQL_NO_CACHE提示，避免缓存影响测试结果
+            if sql.upper().startswith("SELECT") and "SQL_NO_CACHE" not in sql.upper():
+                sql = sql.replace("SELECT", "SELECT SQL_NO_CACHE", 1)
+
+            # 使用SSCursor实现服务器端游标，显著减少客户端内存占用
+            if use_server_side_cursor:
+                cursor = self.__connection.cursor(SSCursor)
+            else:
+                cursor = self.__connection.cursor(DictCursor)
+
+            start_time = time.time()
+            self.logger.debug(f"执行查询: {sql}")
+            cursor.execute(sql, args)
+            query_time = time.time() - start_time
+            self.logger.debug(f"SQL执行时间: {query_time:.2f}秒")
+
+            # 针对bool_dict模式的优化
+            if bool_dict:
+                # 预初始化字段名列表，避免每批数据都重新检查
+                field_names = None
+
+                while True:
+                    start_fetch = time.time()
+                    batch = cursor.fetchmany(size)
+                    fetch_time = time.time() - start_fetch
+                    if not batch:
+                        break
+
+                    self.logger.debug(f"获取{len(batch)}行数据用时: {fetch_time:.2f}秒")
+
+                    if not field_names and batch:
+                        # 第一批时初始化字段名
+                        if isinstance(batch[0], dict):
+                            field_names = list(batch[0].keys())
+                        else:
+                            # SSCursor返回元组，需要从游标描述中获取字段名
+                            field_names = [desc[0] for desc in cursor.description]
+
+                    # 更高效地构建字典结果
+                    start_conv = time.time()
+                    result_dict = {field: [] for field in field_names}
+
+                    if isinstance(batch[0], dict):
+                        # DictCursor返回的是字典
+                        for row in batch:
+                            for field in field_names:
+                                result_dict[field].append(row[field])
+                    else:
+                        # SSCursor返回的是元组
+                        for row in batch:
+                            for i, field in enumerate(field_names):
+                                result_dict[field].append(row[i])
+
+                    conv_time = time.time() - start_conv
+                    self.logger.debug(f"转换数据格式用时: {conv_time:.2f}秒")
+
+                    yield result_dict
+            else:
+                # 普通模式逐行返回
+                for row in cursor:
+                    if isinstance(row, dict):
+                        yield row
+                    else:
+                        # SSCursor返回元组，转为字典
+                        field_names = [desc[0] for desc in cursor.description]
+                        yield {field_names[i]: value for i, value in enumerate(row)}
+
+        except Exception as e:
+            self.logger.error(f"流式查询失败: {sql} | {e}")
+            raise RuntimeError(f"流式查询失败: {e}") from None
+        finally:
+            if cursor:
+                cursor.close()
+
+    def paginate(self, tablename: str = "", conditions: Dict = None,
+                 fields: List[str] = None, order: Dict[str, bool] = None,
+                 page: int = 1, page_size: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        分页查询
+
+        Args:
+            tablename: 表名，默认为当前选择的表
+            conditions: 查询条件
+            fields: 要查询的字段列表
+            order: 排序 {列名: 是否升序}
+            page: 页码，从1开始
+            page_size: 每页记录数
+
+        Returns:
+            (当前页数据, 总记录数)
+        """
+        tablename = tablename or self.__selected_table
+        if not tablename:
+            raise ValueError("未指定表名")
+
+        # 计算总记录数
+        count_sql, count_params = self.query_builder.build_select(
+            tablename=tablename,
+            fields=["COUNT(*) as total"],
+            conditions=conditions
+        )
+        total_result = self.query_one(count_sql, count_params)
+        total = total_result["total"] if total_result else 0
+
+        # 空结果快速返回
+        if total == 0:
+            return [], 0
+
+        # 查询分页数据
+        offset = (page - 1) * page_size
+        data = self.select(
+            tablename=tablename,
+            conditions=conditions,
+            fields=fields,
+            order=order,
+            limit=page_size,
+            offset=offset
+        )
+
+        return data, total
+
+    def analyze_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Dict[str, Any]:
+        """
+        分析查询执行计划并提供优化建议
+
+        Args:
+            sql: SQL查询语句
+            args: 查询参数
+
+        Returns:
+            分析报告
+        """
+        self._ensure_connection()
+
+        # 获取执行计划
+        explain_sql = f"EXPLAIN {sql}"
+        explain_result = self.query(explain_sql, args)
+
+        # 分析执行计划
+        analysis = {
+            "execution_plan": explain_result,
+            "recommendations": []
+        }
+
+        # 检查是否使用索引
+        for row in explain_result:
+            if row.get("key") is None and row.get("type") not in ["system", "const"]:
+                table = row.get("table", "")
+                analysis["recommendations"].append(f"表'{table}'未使用索引，考虑为查询条件添加索引")
+
+            if row.get("rows", 0) > 10000:
+                analysis["recommendations"].append(f"扫描行数较多({row.get('rows')}行)，考虑优化查询或添加索引")
+
+        return analysis
+
+    def shard_query(self, tablename: str, id_field: str,
+                    conditions: Dict = None, fields: List[str] = None,
+                    shard_size: int = 10000, process_func: Callable = None):
+        """
+        分片查询大表，自动按主键或指定字段进行分片查询
+
+        Args:
+            tablename: 表名
+            id_field: 用于分片的ID字段（应该有索引）
+            conditions: 查询条件
+            fields: 要查询的字段列表
+            shard_size: 每个分片大小
+            process_func: 处理每个分片数据的函数
+
+        Returns:
+            处理结果列表，如果没有process_func则返回所有数据
+        """
+        tablename = tablename or self.__selected_table
+        if not tablename:
+            raise ValueError("未指定表名")
+
+        # 获取最小和最大ID
+        min_max_sql, min_max_params = self.query_builder.build_select(
+            tablename=tablename,
+            fields=[f"MIN({id_field}) as min_id", f"MAX({id_field}) as max_id"],
+            conditions=conditions
+        )
+
+        result = self.query_one(min_max_sql, min_max_params)
+        if not result or result['min_id'] is None:
+            return []
+
+        min_id, max_id = result['min_id'], result['max_id']
+
+        # 分片处理
+        results = []
+        for start_id in range(min_id, max_id + 1, shard_size):
+            end_id = min(start_id + shard_size - 1, max_id)
+
+            # 构建分片条件
+            shard_conditions = conditions.copy() if conditions else {}
+            shard_conditions[id_field] = {"$between": [start_id, end_id]}
+
+            # 查询分片
+            shard_sql, shard_params = self.query_builder.build_select(
+                tablename=tablename,
+                fields=fields,
+                conditions=shard_conditions,
+                order={id_field: True}
+            )
+
+            self.logger.debug(f"查询ID范围 {start_id} 到 {end_id}")
+            shard_data = self.query(shard_sql, shard_params)
+
+            # 处理分片数据
+            if process_func:
+                shard_result = process_func(shard_data)
+                if shard_result:
+                    results.append(shard_result)
+            else:
+                results.extend(shard_data)
+
+            # 记录进度
+            progress = (end_id - min_id) / (max_id - min_id) * 100 if max_id > min_id else 100
+            self.logger.info(f"分片查询进度: {progress:.1f}%")
+
+        return results
 
     def query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Optional[Dict[str, Any]]:
         """
@@ -1384,7 +1640,10 @@ class Mysqlop(SQLutilop):
 
     def select(self, tablename: str = "", conditions: Dict = None,
                order: Dict[str, bool] = None, fields: List[str] = None,
-               limit: int = None, offset: int = None, bool_dict: bool = False, **kwargs):
+               limit: int = None, offset: int = None, bool_dict: bool = False,
+               stream: bool = False, size: int = 5000,
+               use_index_hint: bool = False, use_server_side_cursor: bool = True, **kwargs) -> Union[
+            list[dict[str, Any]], dict[str, Any], Generator[dict[str, Any], None, None]]:
         """
         查询数据
 
@@ -1396,9 +1655,14 @@ class Mysqlop(SQLutilop):
             limit: 限制返回记录数
             offset: 跳过前N条记录
             bool_dict: 是否以字典形式返回结果 {列名: [列值列表]}，默认为False
+            stream: 是否以流式方式返回结果，优先级高于bool_dict
+            size: 流式查询时的批量大小
+            use_index_hint: 是否添加索引提示
+            use_server_side_cursor: 是否使用服务器端游标（减少内存使用）
             **kwargs: 其他参数
 
         Returns:
+            如果stream为True，返回结果迭代器；
             如果bool_dict为False，返回查询结果列表；
             如果bool_dict为True，返回字典 {列名: [列值列表]}
         """
@@ -1417,7 +1681,40 @@ class Mysqlop(SQLutilop):
             **kwargs
         )
 
-        # 执行查询
+        # 添加索引提示
+        if use_index_hint and conditions:
+            # 根据条件猜测可能的索引
+            index_candidates = []
+            for col in conditions:
+                if isinstance(col, str):
+                    index_candidates.append(col)
+
+            if index_candidates:
+                # 检查表是否有这些索引
+                safe_table = self.query_builder.escape_identifier(tablename)
+                indexes = self.get_table_index(tablename)
+                available_indexes = []
+
+                for index in indexes:
+                    if index["Column_name"] in index_candidates:
+                        available_indexes.append(index["Key_name"])
+
+                if available_indexes:
+                    # 在FROM子句后添加USE INDEX提示
+                    sql = sql.replace(f"FROM {safe_table}",
+                                      f"FROM {safe_table} USE INDEX ({', '.join(set(available_indexes))})", 1)
+
+        # 流式查询
+        if stream:
+            return self.stream_query(
+                sql=sql,
+                args=params,
+                size=size,
+                bool_dict=bool_dict,
+                use_server_side_cursor=use_server_side_cursor
+            )
+
+        # 普通查询
         return self.query(sql, params, bool_dict=bool_dict)
 
     def update(self, tablename: str = '', update_values: Dict[str, Any] = None,
@@ -1623,14 +1920,14 @@ class Mysqlop(SQLutilop):
                 cursor.close()
 
     def batch_insert(self, tablename: str, records: List[Dict[str, Any]],
-                     batch_size: int = 1000, **kwargs):
+                     size: int = 1000, **kwargs):
         """
         批量插入数据
 
         Args:
             tablename: 表名
             records: 记录列表
-            batch_size: 每批数量
+            size: 每批数量
             **kwargs: 其他参数
 
         Returns:
@@ -1644,8 +1941,8 @@ class Mysqlop(SQLutilop):
             raise ValueError("未指定表名")
 
         total = 0
-        for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
+        for i in range(0, len(records), size):
+            batch = records[i:i + size]
             # 构建批量插入SQL
             sql, params = self.query_builder.build_insert(
                 tablename=tablename,

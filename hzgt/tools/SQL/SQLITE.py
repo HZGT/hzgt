@@ -8,7 +8,7 @@ from enum import Enum
 from logging import Logger
 from typing import Dict, Optional, Any, List, Tuple, Union
 
-from .core import SQLutilop, QueryBuilder, DBAdapter
+from .sqlcore import SQLutilop, QueryBuilder, DBAdapter
 from hzgt.core.log import set_log
 
 
@@ -679,7 +679,7 @@ class SQLiteop(SQLutilop):
         Returns:
             Logger: 日志记录器实例
         """
-        return set_log("hzgt.sqlite", os.path.join("logs", "sqlite.log"))
+        return set_log("hzgt.sqlite", "logs")
 
     def __enter__(self):
         """上下文管理器入口"""

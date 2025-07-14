@@ -160,19 +160,26 @@ def ftps(directory, res, port, perm, user, password):
 
 @click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")
 @click.argument('directory', default=os.getcwd(), type=click.STRING, required=False)
-@click.option("-r", "--res", default=getip(-1), type=click.STRING, help="选填- IP地址", show_default=True)
+@click.option("-r", "--res", default=getip(-1), type=click.STRING,
+              help="选填- IP地址 或者在 `hzgt ips` 命令长度之间(如需输入负数, 使用`-- -3`的方式)", show_default=True)
 @click.option("-p", "--port", default=9090, type=click.INT, help="选填- 端口", show_default=True)
-def fs(directory, res, port):
+@click.option("-v6", "--ipv6", is_flag=True, default=False, help="选填- 是否使用 IPV6 [res 选项为第二种情况时有效]")
+def fs(directory, res, port, ipv6):
     """
     HZGT 文件服务器
 
     :param directory: 目录 默认当前目录
 
-    :param res: IP 地址
+    :param res: 选填- IP地址 或者在 `hzgt ips` 命令长度之间
 
-    :param port: 端口
+    :param port: 选填- 端口
+
+    :param ipv6: 选填- 是否使用 IPV6 [res 选项为第二种情况时有效]
     """
-    Fileserver(directory, res, port)
+    tempips = getip(ipv6=ipv6)
+    if res in [f"{i}" for i in range(-len(tempips), len(tempips))]:
+        res = tempips[int(res)]
+    Fileserver(directory, res, port, ipv6=ipv6)
 
 
 @click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")
@@ -185,6 +192,8 @@ def ips(index, ipv6):
     如果 索引 index 为 负数, 请使用 ```hzgt ips -- -1```
 
     :param index: 如果指定 index, 则返回 IP地址列表 中索引为 index 的 IP, 否则返回 IP地址列表
+    :param ipv6: 选填- 是否获取 IPV6
+
     """
     print(getip(index, ipv6=ipv6))
 

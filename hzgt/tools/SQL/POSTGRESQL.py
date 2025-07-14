@@ -9,7 +9,7 @@
 # import psycopg2.extras
 # import psycopg2.pool
 #
-# from .core import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter, JoinType
+# from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter, JoinType
 # from ... import set_log
 #
 # # PostgreSQL数据类型映射
@@ -1193,7 +1193,7 @@
 #         Returns:
 #             日志记录器
 #         """
-#         return set_log("hzgt.postgre", os.path.join("logs", "postgre.log"))
+#         return set_log("hzgt.postgre", "logs")
 #
 #     def connect(self):
 #         """

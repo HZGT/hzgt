@@ -22,7 +22,7 @@ from hzgt.core import AutoConfig
 
 
 __all__ = [
-    # core
+    # sqlcore
     "version",
     "pic", "restrop",
     "bitconv", "getfsize", "ensure_file",

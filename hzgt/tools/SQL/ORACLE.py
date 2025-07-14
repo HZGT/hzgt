@@ -9,7 +9,7 @@
 # import cx_Oracle
 #
 # from ...log import set_log
-# from .core import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter, JoinType
+# from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter, JoinType
 #
 # # Oracle数据类型映射
 # ORACLE_DATA_TYPES = {
@@ -859,7 +859,7 @@
 #         Returns:
 #             Logger: 日志记录器实例
 #         """
-#         return set_log("hzgt.oracle", os.path.join("logs", "oracle.log"))
+#         return set_log("hzgt.oracle", "logs")
 #
 #     def __enter__(self):
 #         """上下文管理器入口"""

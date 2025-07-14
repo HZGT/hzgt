@@ -73,16 +73,28 @@ def getfsize(filepath: str, timeout: int = 5):
 def ensure_file(file_path: str) -> None:
     """
     确保文件及其目录存在。如果目录或文件不存在，则创建它们。
+    增强对Windows系统同名文件冲突的处理。
 
     :param file_path: 文件路径
     """
-    # 获取文件所在的目录（并确保路径标准化）
-    dir_path = os.path.dirname(os.path.normpath(file_path))
+    # 标准化路径并获取目录路径
+    normalized_path = os.path.normpath(file_path)
+    dir_path = os.path.dirname(normalized_path)
 
-    # 使用makedirs的exist_ok参数简化目录创建
-    if dir_path:  # 避免创建空路径（如当前目录）
-        os.makedirs(dir_path, exist_ok=True)
+    # 仅当目录路径非空时才处理目录创建
+    if dir_path:
+        # 检查路径是否已存在
+        if os.path.exists(dir_path):
+            # 如果路径存在但不是目录（即文件），则引发错误
+            if not os.path.isdir(dir_path):
+                raise FileExistsError(
+                    f"创建目录失败 '{dir_path}' 因为该路径已存在且不是目录"
+                )
+            # 如果是目录，则跳过创建（正常情况）
+        else:
+            # 路径不存在，安全创建目录
+            os.makedirs(dir_path, exist_ok=True)
 
-    # 仅当文件不存在时创建（避免意外覆盖）
-    if not os.path.exists(file_path):
-        open(file_path, 'a').close()  # 使用追加模式安全创建
+    # 安全创建文件（仅当文件不存在时）
+    if not os.path.exists(normalized_path):
+        open(normalized_path, 'a').close()

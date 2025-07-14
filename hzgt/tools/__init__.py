@@ -21,7 +21,7 @@ from .FileServer import Fileserver, getip
 from .INI import readini, saveini
 
 # 加密/解密嵌套字典
-from .INI import getbyjs, ende_dict, PUBLICKEY, PRIVATEKEY, encrypt_rsa, decrypt_rsa
+# from .INI import getbyjs, ende_dict, PUBLICKEY, PRIVATEKEY, encrypt_rsa, decrypt_rsa
 
 # SMTP
 from .SMTP import Smtpop, Imapop
@@ -31,6 +31,6 @@ __all__ = ['Mqttop',
            'Func_Register', 'Class_Register',
            'Ftpserver', 'Ftpclient',
            'Fileserver', 'getip',
-           'readini', 'saveini', 'getbyjs', 'ende_dict', 'PUBLICKEY', 'PRIVATEKEY', 'encrypt_rsa', 'decrypt_rsa',
+           'readini', 'saveini',  # 'getbyjs', 'ende_dict', 'PUBLICKEY', 'PRIVATEKEY', 'encrypt_rsa', 'decrypt_rsa',
            'Smtpop', 'Imapop',
            ]

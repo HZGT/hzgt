@@ -789,7 +789,8 @@ def fix_path(_path):
 
 
 def Fileserver(path: str = ".", host: str = "", port: int = 5001,
-               bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
+               bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem",
+               ipv6: bool = False):
     """
     快速构建文件服务器. 阻塞进程. 默认使用 HTTP
 
@@ -803,6 +804,7 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
     :param bool_https: 是否启用HTTPS. 默认为False
     :param certfile: SSL证书文件路径. 默认同目录下的 cert.pem
     :param keyfile: SSL私钥文件路径. 默认同目录下的 privkey.pem
+    :param ipv6: 是否启用IPv6支持. 默认为False
     :return: None
     """
     path = fix_path(path)
@@ -819,20 +821,39 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
         raise ValueError(f"无效的共享目录路径: {path}") from err
 
     if not host:
-        host = getip(-1)
+        if ipv6:
+            host = "::"  # IPv6通配符地址
+        else:
+            host = getip(-1)
 
     if not port:
         port = 5001
 
+    # 创建适当的服务器类以支持IPv6
+    class IPv6ThreadingHTTPServer(ThreadingHTTPServer):
+        address_family = socket.AF_INET6
+
+    class IPv6ThreadingTCPServer(ThreadingTCPServer):
+        address_family = socket.AF_INET6
+
     if bool_https:
-        httpd = ThreadingHTTPServer((host, port), EnhancedHTTPRequestHandler)
+        if ipv6:
+            httpd = IPv6ThreadingHTTPServer((host, port, 0, 0), EnhancedHTTPRequestHandler)
+        else:
+            httpd = ThreadingHTTPServer((host, port), EnhancedHTTPRequestHandler)
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(certfile, keyfile)
         httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-        print(f"HTTPS service running at https://{host}:{port}")
+        protocol = "https"
     else:
-        httpd = ThreadingTCPServer((host, port), EnhancedHTTPRequestHandler)
-        print(f"HTTP service running at http://{host}:{port}")
+        if ipv6:
+            httpd = IPv6ThreadingTCPServer((host, port, 0, 0), EnhancedHTTPRequestHandler)
+        else:
+            httpd = ThreadingTCPServer((host, port), EnhancedHTTPRequestHandler)
+        protocol = "http"
+
+    print(f"{protocol.upper()} service running at {protocol}://"
+          f"{f'[{host}]' if ipv6 else host}:{port}")
 
     os.chdir(path)  # 设置工作目录作为共享目录路径
 
@@ -840,3 +861,5 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
 
     threading.Thread(target=httpd.serve_forever).start()
     return httpd
+
+
