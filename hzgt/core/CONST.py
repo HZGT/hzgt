@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import sys
-import locale
 import getpass
-
+import locale
 import logging
+import sys
 
 CURRENT_SYSTEM_DEFAULT_ENCODING: str = sys.getdefaultencoding()  # 当前系统所使用的默认字符编码
 DEFAULT_ENCODING: str = locale.getpreferredencoding()  # 获取用户设定的系统默认编码

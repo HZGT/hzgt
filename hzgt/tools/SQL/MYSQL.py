@@ -1985,7 +1985,7 @@ class Mysqlop(SQLutilop):
         self.execute(sql)
         self.logger.info("修改密码成功")
 
-    def get_curuser_permissions(self):
+    def get_permissions(self):
         """
         获取当前用户权限
 

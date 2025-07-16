@@ -4,15 +4,6 @@ import datetime
 import logging
 from functools import wraps
 
-LOG_LEVEL = {
-    "debug": logging.DEBUG,
-    "info": logging.INFO,
-    "warning": logging.WARNING,
-    "error": logging.ERROR,
-    "critical": logging.CRITICAL
-}
-
-
 def vargs(valid_params: dict):
     """
     根据其有效集合验证函数参数
@@ -80,7 +71,7 @@ class __IndentLogger:
             self.indent_level -= 1
 
 
-indent_logger = __IndentLogger()
+__indent_logger = __IndentLogger()
 del __IndentLogger
 
 
@@ -92,7 +83,6 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
     :param date_format: 时间格式
     :return:
     """
-
     def decorator(func):
         def wrapper(*args, **kwargs):
             start_time = datetime.datetime.now()
@@ -100,8 +90,8 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
             module_name = func.__module__
             func_name = func.__name__
 
-            indent_logger.log(f"开始时间 {start_str} {module_name}.{func_name}")
-            indent_logger.inc_indent()
+            __indent_logger.log(f"开始时间 {start_str} {module_name}.{func_name}")
+            __indent_logger.inc_indent()
             try:
                 result = func(*args, **kwargs)
             finally:
@@ -109,8 +99,8 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
             end_time = datetime.datetime.now()
             end_str = end_time.strftime(date_format)
             spent_time = (end_time - start_time).total_seconds()
-            indent_logger.dec_indent()
-            indent_logger.log(f"结束时间 {end_str} {module_name}.{func_name} 总耗时 {spent_time:.{precision}f} s")
+            __indent_logger.dec_indent()
+            __indent_logger.log(f"结束时间 {end_str} {module_name}.{func_name} 总耗时 {spent_time:.{precision}f} s")
 
             return result
 

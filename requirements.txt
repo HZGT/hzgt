@@ -1,0 +1,8 @@
+click>=8.2.1
+dotenv>=0.9.9
+paho-mqtt>=2.1.0
+PyExecJS>=1.5.1
+pyftpdlib>=2.0.1
+PyMySQL>=1.1.1
+python-dotenv>=1.1.1
+requests>=2.32.4

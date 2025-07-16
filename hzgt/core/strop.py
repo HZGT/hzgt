@@ -119,7 +119,7 @@ def pic(*args, bool_header=False, bool_show=True):
     return _temp_list
 
 
-def is_valid_rgb_tuple(t):
+def __is_valid_rgb_tuple(t):
     """
     判断 t 是否为 RGB 元组
     """
@@ -145,10 +145,6 @@ def restrop(text, m: int = 0, f: int = 1, b: int = 0,
             frgb: tuple[int, int, int] = None, brgb: tuple[int, int, int] = None):
     """
     返回 颜色配置后的字符串.
-
-    当 `f` = 8 时, `frgb` 参数可用, 传入 RGB 颜色元组, 将配置RGB前景颜色
-
-    当 `b` = 8 时, `brgb` 参数可用, 传入 RGB 颜色元组, 将配置RGB背景颜色
 
     m mode 模式
         * 0  - 默认
@@ -193,7 +189,7 @@ def restrop(text, m: int = 0, f: int = 1, b: int = 0,
 
         # 处理前景色：优先使用 frgb
         if frgb is not None:
-            if not is_valid_rgb_tuple(frgb):
+            if not __is_valid_rgb_tuple(frgb):
                 raise ValueError(f"`frgb={frgb}` 颜色参数无效")
             str_fore = f'38;2;{frgb[0]};{frgb[1]};{frgb[2]}'
         else:
@@ -202,7 +198,7 @@ def restrop(text, m: int = 0, f: int = 1, b: int = 0,
 
         # 处理背景色：优先使用 brgb
         if brgb is not None:
-            if not is_valid_rgb_tuple(brgb):
+            if not __is_valid_rgb_tuple(brgb):
                 raise ValueError(f"`brgb={brgb}` 颜色参数无效")
             str_back = f'48;2;{brgb[0]};{brgb[1]};{brgb[2]}'
         else:

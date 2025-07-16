@@ -67,6 +67,7 @@ class Func_Register(dict):
         """
         return self._dict.items()
 
+
 class Class_Register(dict):
     """
     类注册器

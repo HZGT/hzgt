@@ -16,6 +16,7 @@ class AutoConfig:
     根据类型注解，会自动将环境变量的字符串值转换为对应类型，包括自定义类类型。
 
     示例:
+
         >>> class ConfigModel(AutoConfig):
         >>>     OPENAI_API_KEY: str
         >>>     OPENAI_API_BASE: str = "https://api.siliconflow.cn/v1"
@@ -23,7 +24,6 @@ class AutoConfig:
         >>> config = ConfigModel()  # 会自动从环境变量读取值
         >>> print(config.OPENAI_API_KEY)
         >>> print(config.OPENAI_API_BASE)
-
 
         >>> class DatabaseConfig(AutoConfig):
         >>>     HOST: str = "localhost"

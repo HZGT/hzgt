@@ -3,7 +3,7 @@ import typing as t
 import click.formatting
 
 
-def wrap_text(
+def __wrap_text(
         text: str,
         width: int = 78,
         initial_indent: str = "",
@@ -76,7 +76,7 @@ def wrap_text(
     return "\n".join(rv)
 
 
-click.formatting.wrap_text = wrap_text
+click.formatting.wrap_text = __wrap_text
 
 # ================================================== 重写 wrap_text 函数 =================================================
 
@@ -84,14 +84,15 @@ click.formatting.wrap_text = wrap_text
 
 import os
 
-from hzgt.core.CONST import CURRENT_USERNAME
-from .tools import getip, Ftpserver, Fileserver
+from .tools import Ftpserver, Fileserver
+from .core.ipss import getip
+from .core.CONST import CURRENT_USERNAME
 
-HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  # 让 -h 与 --help 功能一样
+__HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  # 让 -h 与 --help 功能一样
 
 
-@click.group(context_settings=HELP_CTRL_SET_DICT)
-def losf():
+@click.group(context_settings=__HELP_CTRL_SET_DICT)
+def __losf():
     """
     ftps  FTP服务端
 
@@ -102,7 +103,7 @@ def losf():
     pass
 
 
-@click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")  # epilog 末尾额外信息
+@click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")  # epilog 末尾额外信息
 @click.argument('directory', default=os.getcwd(), type=click.STRING)
 @click.option("-r", "--res", default=getip(-1), type=click.STRING, help="选填- IP地址", show_default=True)
 @click.option("-p", "--port", default=5001, type=click.INT, help="选填- 端口", show_default=True)
@@ -158,13 +159,12 @@ def ftps(directory, res, port, perm, user, password):
     fs.start(res, port)
 
 
-@click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")
+@click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")
 @click.argument('directory', default=os.getcwd(), type=click.STRING, required=False)
 @click.option("-r", "--res", default=getip(-1), type=click.STRING,
               help="选填- IP地址 或者在 `hzgt ips` 命令长度之间(如需输入负数, 使用`-- -3`的方式)", show_default=True)
 @click.option("-p", "--port", default=9090, type=click.INT, help="选填- 端口", show_default=True)
-@click.option("-v6", "--ipv6", is_flag=True, default=False, help="选填- 是否使用 IPV6 [res 选项为第二种情况时有效]")
-def fs(directory, res, port, ipv6):
+def fs(directory, res, port):
     """
     HZGT 文件服务器
 
@@ -173,34 +173,30 @@ def fs(directory, res, port, ipv6):
     :param res: 选填- IP地址 或者在 `hzgt ips` 命令长度之间
 
     :param port: 选填- 端口
-
-    :param ipv6: 选填- 是否使用 IPV6 [res 选项为第二种情况时有效]
     """
-    tempips = getip(ipv6=ipv6)
+    tempips = getip()
     if res in [f"{i}" for i in range(-len(tempips), len(tempips))]:
         res = tempips[int(res)]
-    Fileserver(directory, res, port, ipv6=ipv6)
+    Fileserver(directory, res, port)
 
 
-@click.command(context_settings=HELP_CTRL_SET_DICT, epilog="")
+@click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")
 @click.argument('index', nargs=1, type=click.INT, required=False, default=None)
-@click.option("-v6", "--ipv6", is_flag=True, default=False, help="选填- 是否获取 IPV6")
-def ips(index, ipv6):
+def ips(index):
     """
     获取本机 IP 列表
 
     如果 索引 index 为 负数, 请使用 ```hzgt ips -- -1```
 
     :param index: 如果指定 index, 则返回 IP地址列表 中索引为 index 的 IP, 否则返回 IP地址列表
-    :param ipv6: 选填- 是否获取 IPV6
 
     """
-    print(getip(index, ipv6=ipv6))
+    print(getip(index))
 
 
-losf.add_command(ftps)
-losf.add_command(fs)
-losf.add_command(ips)
+__losf.add_command(ftps)
+__losf.add_command(fs)
+__losf.add_command(ips)
 
 if __name__ == "__main__":
-    losf()
+    __losf()

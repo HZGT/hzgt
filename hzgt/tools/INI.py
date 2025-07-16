@@ -51,7 +51,7 @@ def _parse_value(value):
     return value
 
 
-def encode(obj, opt=None):
+def __encode(obj, opt=None):
     children = []
     out = ''
 
@@ -69,19 +69,19 @@ def encode(obj, opt=None):
     for k, v in obj.items():
         if v and isinstance(v, list):
             for item in v:
-                out += safe(k + '[]') + separator + safe(item) + '\n'
+                out += __safe(k + '[]') + separator + __safe(item) + '\n'
         elif v and isinstance(v, dict):
             children.append(k)
         else:
-            out += safe(k) + separator + safe(v) + '\n'
+            out += __safe(k) + separator + __safe(v) + '\n'
 
     if opt.get('section') and len(out):
-        out = '[' + safe(opt['section']) + ']' + '\n' + out
+        out = '[' + __safe(opt['section']) + ']' + '\n' + out
 
     for k in children:
         nk = '.'.join(_dot_split(k))
         section = (opt['section'] + '.' if opt.get('section') else '') + nk
-        child = encode(obj[k], {
+        child = __encode(obj[k], {
             'section': section,
             'whitespace': opt['whitespace']
         })
@@ -96,10 +96,10 @@ def _dot_split(string):
     return re.sub(r'\\\.', '\u0001', string).split('.')
 
 
-EMPTY_KEY_SENTINEL = object()
+__EMPTY_KEY_SENTINEL = object()
 
 
-def decode(string, on_empty_key=EMPTY_KEY_SENTINEL):
+def __decode(string, on_empty_key=__EMPTY_KEY_SENTINEL):
     out = {}
     p = out
     regex = re.compile(r'^\[([^]]*)]$|^([^=]+)(=(.*))?$', re.IGNORECASE)
@@ -112,14 +112,14 @@ def decode(string, on_empty_key=EMPTY_KEY_SENTINEL):
         if not match:
             continue
         if match[1]:
-            section = unsafe(match[1])
+            section = __unsafe(match[1])
             p = out[section] = out.get(section, {})
             continue
-        key = unsafe(match[2])
+        key = __unsafe(match[2])
         if match[3]:
             if match[4].strip():
-                value = _parse_value(unsafe(match[4]))
-            elif on_empty_key is EMPTY_KEY_SENTINEL:
+                value = _parse_value(__unsafe(match[4]))
+            elif on_empty_key is __EMPTY_KEY_SENTINEL:
                 raise ValueError(key)
             else:
                 value = on_empty_key
@@ -175,7 +175,7 @@ def _is_quoted(val):
     return (val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")
 
 
-def safe(val):
+def __safe(val):
     return json.dumps(val) if \
         (not isinstance(val, str) or
          re.match(r'[=\r\n]', val) or
@@ -185,7 +185,7 @@ def safe(val):
         val.replace(';', '\\;').replace('#', '\\#')
 
 
-def unsafe(val):
+def __unsafe(val):
     val = (val or '').strip()
     if _is_quoted(val):
         # remove the single quotes before calling JSON.parse
@@ -219,8 +219,8 @@ def unsafe(val):
     return val
 
 
-parse = decode
-stringify = encode
+__parse = __decode
+__stringify = __encode
 
 
 # 以上内容为 ini-parser 库[版本 1.2.1 / MIT许可] 的内容
@@ -234,7 +234,7 @@ def readini(inifile: str, encoding: str = "utf-8") -> dict:
     :param encoding: 编码 默认 utf-8
     :return: dict ini 对应嵌套字典
     """
-    return parse(open(inifile, encoding=encoding).read())
+    return __parse(open(inifile, encoding=encoding).read())
 
 
 def saveini(savename: str, iniconfig: dict, section_prefix: str = "",
@@ -254,7 +254,7 @@ def saveini(savename: str, iniconfig: dict, section_prefix: str = "",
         savename = savename + ".ini"
 
     with open(savename, "w+", encoding=encoding) as fp:
-        fp.write(stringify(iniconfig,
+        fp.write(__stringify(iniconfig,
                            {"section": section_prefix,  # 各项前缀
                             "whitespace": bool_space  # 等号两边是否添加空格
                             }))

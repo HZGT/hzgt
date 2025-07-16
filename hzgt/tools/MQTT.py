@@ -7,18 +7,12 @@ from logging import Logger
 from typing import Literal
 
 import paho.mqtt.client as mqtt
+from paho.mqtt.enums import MQTTProtocolVersion
 from paho.mqtt.properties import Properties
 from paho.mqtt.packettypes import PacketTypes
 
 from hzgt.core.log import set_log
 from hzgt.core.Decorator import vargs
-
-
-def generate_random_clientid():
-    part1 = ''.join(random.choices(string.ascii_letters + string.digits, k = 8))
-    part2 = ''.join(random.choices(string.ascii_letters + string.digits, k = 4))
-    part3 = ''.join(random.choices(string.ascii_letters + string.digits, k = 4))
-    return f"{part1}-{part2}-{part3}"
 
 
 """
@@ -29,29 +23,46 @@ def generate_random_clientid():
 0x04 - 连接已拒绝, 无效的用户名或密码（Connection Refused, Bad User Name or Password）：客户端提供的用户名或密码无效
 0x05 - 连接已拒绝, 未授权（Connection Refused, Not Authorized）：客户端没有被授权连接到服务器
 """
-connection_status = {
-    0: "连接成功",
-    1: "连接被拒绝 - 协议版本不正确",
-    2: "连接被拒绝 - 客户端标识符无效",
-    3: "连接被拒绝 - 服务器不可用",
-    4: "连接被拒绝 - 用户名或密码错误",
-    5: "连接被拒绝 - 未授权",
-    **{i: "未知返回码" for i in range(6, 256)}
-}
 
 
 class Mqttop:
+    __CONNECTION_STATUS = {
+        0: "连接成功",
+        1: "连接被拒绝 - 协议版本不正确",
+        2: "连接被拒绝 - 客户端标识符无效",
+        3: "连接被拒绝 - 服务器不可用",
+        4: "连接被拒绝 - 用户名或密码错误",
+        5: "连接被拒绝 - 未授权",
+        **{i: "未知返回码" for i in range(6, 256)}
+    }
+
+    __protocol = {
+        3: MQTTProtocolVersion.MQTTv31,
+        4: MQTTProtocolVersion.MQTTv311,
+        5: MQTTProtocolVersion.MQTTv5
+    }
+
+    @staticmethod
+    def __generate_random_clientid():
+        part1 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        part2 = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
+        part3 = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
+        return f"{part1}-{part2}-{part3}"
+    
     def __init__(self, host: str, port: int,
                  user: str = '', passwd: str = '', clientid: str = '',
                  data_length: int = 100,
-                 transport: Literal["tcp", "websockets", "unix"] = "tcp", protocol: int = 3,
+                 transport: Literal["tcp", "websockets", "unix"] = "tcp", protocol: Literal[3, 4, 5] = 3,
                  logger: Logger = None):
         """
         调用self.publish()函数发布信息
 
-        protocol:
+        + protocol:
+
             - 3 -- MQTTv31
+
             - 4 -- MQTTv311
+
             - 5 -- MQTTv5
 
         :param host: MQTT服务器IP地址
@@ -62,12 +73,14 @@ class Mqttop:
         :param clientid: 可选, "客户端"用户名 为空将随机
 
         :param data_length: 缓存数据列表的长度 默认为100
-        :param protocol: MQTT协议版本
-        
+        :param protocol: MQTT协议版本 支持 3(v31) 4(v311) 5(v5)
+
         :param logger: 日志记录器
         """
         self.__data_dict = {}  # 接收到的数据
-        self.bool_con_success = False  # 是否连接成功
+
+        self.bool_con_success = False
+        # 是否连接成功
 
         if host:
             self.host = host
@@ -82,7 +95,7 @@ class Mqttop:
         self.passwd = str(passwd)
 
         self.data_length = data_length if data_length > 0 else 100
-        self.protocol = protocol
+        self.protocol = self.__protocol[protocol]
         
         if logger is None:
             self.__logger = set_log("hzgt.mqtt", os.path.join("logs", "mqtt.log"), level=2)
@@ -90,7 +103,8 @@ class Mqttop:
             self.__logger = logger
 
         if len(self.clientid) == 0 or self.clientid is None:
-            self.__client = mqtt.Client(client_id=generate_random_clientid(), transport=transport, protocol=self.protocol)
+            self.__client = mqtt.Client(client_id=self.__generate_random_clientid(),
+                                        transport=transport, protocol=self.protocol)
         else:
             self.__client = mqtt.Client(client_id=self.clientid, transport=transport, protocol=self.protocol)
         self.__logger.info(f"MQTT服务器[协议版本({self.protocol})]连接信息: host[`{self.host}`] port[`{self.port}`] user[`{self.user}`] clientid[`{self.clientid}`]]")
@@ -125,7 +139,6 @@ class Mqttop:
         """
         启动MQTT连接, 建议使用time.sleep(5)等待连接完成
 
-        :return:
         """
         threading.Thread(target=self.__run, daemon=True).start()  # 开启线程防止阻塞主程序, 使用.close()函数自动关闭该线程
 
@@ -133,7 +146,6 @@ class Mqttop:
         """
         启动MQTT连接, 建议使用time.sleep(5)等待连接完成
 
-        :return:
         """
         return self.start()
 
@@ -153,7 +165,7 @@ class Mqttop:
     def disconnect(self):
         """
         同 self.close() 方法
-        :return:
+        
         """
         return self.close()
 
@@ -175,7 +187,7 @@ class Mqttop:
             self.bool_con_success = True
         else:
             # 连接失败并显示错误代码
-            self.__logger.error(f'连接出错 rc={rc} 错误代码: {connection_status.get(rc, f"未知返回码{rc}")}')
+            self.__logger.error(f'连接出错 rc={rc} 错误代码: {self.__CONNECTION_STATUS.get(rc, f"未知返回码{rc}")}')
             self.bool_con_success = False
 
     def __on_connect_v5(self, client, userdata, flags, rc, properties):
@@ -186,7 +198,7 @@ class Mqttop:
             self.bool_con_success = True
             self.__logger.info(f"MQTT服务器 返回信息: {properties}")
         else:
-            self.__logger.error(f'连接出错 rc={rc} 错误代码: {connection_status.get(rc, f"未知返回码{rc}")}')
+            self.__logger.error(f'连接出错 rc={rc} 错误代码: {self.__CONNECTION_STATUS.get(rc, f"未知返回码{rc}")}')
             self.bool_con_success = False
             self.__logger.error(f"MQTT服务器 返回信息: {properties}")
 
@@ -256,7 +268,7 @@ class Mqttop:
             - msg -- MQTTMessage 的实例 包含成员 topic、payload、qos、retain 的类
         :param subtopic: 主题
         :param func: 主题接收到信息后的事件回调函数
-        :return:
+        
         """
         self.__client.subscribe(subtopic)
         if func:
@@ -270,7 +282,7 @@ class Mqttop:
         """
         取消订阅信息
         :param subtopic: 主题
-        :return:
+        
         """
         self.__client.unsubscribe(subtopic)
         self.__logger.info(f"取消订阅主题: `{subtopic}`")
@@ -282,15 +294,19 @@ class Mqttop:
         """
         发布信息到指定的MQTT主题
         
-        qos:
+        + qos:
             - QoS 0：最多一次传递消息可能会丢失或重复, 但发送方只发送一次消息, 不进行确认和重试这种方式开销最小, 适用于对消息丢失不太敏感的场景, 例如环境监测中的非关键数据
+
             - QoS 1：至少一次传递消息保证至少被传递一次发送方发送消息后会等待接收方的确认, 如果没有收到确认, 会重新发送消息这增加了消息传递的可靠性, 但可能会导致消息重复
+
             - QoS 2：恰好一次传递这是最高的QoS等级, 保证消息恰好被传递一次, 不会丢失也不会重复发送方和接收方之间有更复杂的交互来确保这种准确性, 适用于对消息准确性要求极高的场景, 如金融交易信息默认值为0, 表示采用QoS 0等级
-        retain:
+        + retain:
             - 如果为True, MQTT服务器将保留此消息, 新订阅该主题的客户端将立即收到此消息, 即使消息是在客户端订阅之前发布的这在向新连接的客户端提供主题的初始状态时非常有用, 例如设备状态的初始值
+
             - 如果为False, 消息不会被保留, 只有在消息发布时已订阅该主题的客户端才能接收到消息默认值为False
-        bool_log:
+        + bool_log:
             - 如果为True, 当消息成功发送或失败时, 将记录一条信息日志, 包含发送的主题和消息内容
+
             - 如果为False, 则不进行任何日志记录默认值为True
         
         :param topic: 字符串类型, 代表发布消息的主题这是MQTT消息要发送到的目标主题, 订阅该主题的客户端将能够接收到此消息
@@ -299,7 +315,7 @@ class Mqttop:
         :param retain: 布尔类型, 用于指定是否将此消息设置为保留消息
         :param properties: 字典类型, 可选参数, 仅MQTT协议为MQTTv5[protocol=5]时可用, 用于传递额外的元数据或特定于应用程序的信息
         :param bool_log: 布尔类型, 用于确定是否记录消息发布的日志
-        :return: 
+
         """
         if self.protocol == 5:
             pp = Properties(PacketTypes.PUBLISH)
@@ -318,7 +334,6 @@ class Mqttop:
         """
         尝试重连
 
-        :return: None
         """
         self.close()
         self.start()
@@ -331,6 +346,7 @@ class Mqttop:
         :param index: 获取的数据的索引, 默认为0
         :param bool_del: 获取数据时是否删除数据
         :param bool_all: 是否获取所有数据
+
         :return: list或bytes或dict: 根据情况返回bytes类型的数据或者数据列表或者字典
         """
         if topic is not None and topic in self.__data_dict:

@@ -16,98 +16,11 @@ import urllib
 import urllib.parse
 from email.header import Header
 from http import HTTPStatus
-from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from socketserver import ThreadingTCPServer
-from typing import Union, List
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingTCPServer, ThreadingMixIn
 
 from .INI import readini
-
-
-def get_ipv4_addresses() -> List[str]:
-    """
-    获取本机的 IPv4 地址列表
-    """
-    # 获取主机名
-    hostname = socket.gethostname()
-
-    # 获取 IPv4 地址列表
-    ipv4_addresses = socket.gethostbyname_ex(hostname)[-1]
-
-    # 尝试通过连接获取更多可能的 IPv4 地址
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(('10.255.255.255', 1))
-        additional_ip = sock.getsockname()[0]
-        if additional_ip not in ipv4_addresses:
-            ipv4_addresses.append(additional_ip)
-    except Exception:
-        pass
-    finally:
-        sock.close()
-
-    # 确保包含本地回环地址和默认地址
-    if '127.0.0.1' not in ipv4_addresses:
-        ipv4_addresses.insert(0, '127.0.0.1')
-    if '0.0.0.0' not in ipv4_addresses:
-        ipv4_addresses.insert(0, '0.0.0.0')
-
-    return ipv4_addresses
-
-
-def get_ipv6_addresses() -> List[str]:
-    """
-    获取本机的 IPv6 地址列表
-    """
-    # 获取主机名
-    hostname = socket.gethostname()
-
-    # 获取 IPv6 地址列表
-    ipv6_addresses = []
-    try:
-        addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET6)
-        ipv6_addresses = [info[4][0] for info in addr_info]
-    except socket.gaierror:
-        pass
-
-    # 尝试通过连接获取更多可能的 IPv6 地址
-    sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-    try:
-        sock.connect(('2402:4e00::', 1))
-        additional_ip = sock.getsockname()[0]
-        if additional_ip not in ipv6_addresses:
-            ipv6_addresses.append(additional_ip)
-    except Exception as err:
-        pass  # 不支持公网 IPV6
-    finally:
-        sock.close()
-
-    return ipv6_addresses
-
-
-def getip(index: int = None, ipv6: bool = False) -> Union[str, List[str]]:
-    """
-    获取本机 IP 地址
-
-    :param index: 如果指定 index, 则返回 IP 地址列表中索引为 index 的 IP, 否则返回 IP 地址列表
-    :param ipv6: 如果为 True, 则获取 IPv6 地址；否则获取 IPv4 地址
-    :return: IP 地址 或 IP 地址列表
-    """
-    if index is not None and not isinstance(index, int):
-        raise TypeError("参数 index 必须为整数 或为 None")
-
-    # 获取 IPv4 或 IPv6 地址列表
-    if ipv6:
-        addresses = get_ipv6_addresses()
-    else:
-        addresses = get_ipv4_addresses()
-
-    # 根据 index 返回结果
-    if index is None:
-        return addresses
-    else:
-        if index >= len(addresses):
-            raise IndexError(f"索引超出范围, 最大索引为 {len(addresses)}")
-        return addresses[index]
+from ..core.ipss import validate_ip, getip
 
 
 def _ul_li_css(_ico_base64):
@@ -482,10 +395,7 @@ def _convert_favicon_to_base64():
     return b64_data
 
 
-num = 0
-
-
-class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
+class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def get_default_extensions_map():
         """
@@ -778,7 +688,7 @@ class EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         return 'application/octet-stream'
 
 
-def fix_path(_path):
+def __fix_path(_path):
     if os.name == 'nt':  # Windows系统
         if not _path.endswith('\\'):
             _path = _path + '\\'
@@ -788,9 +698,8 @@ def fix_path(_path):
     return _path
 
 
-def Fileserver(path: str = ".", host: str = "", port: int = 5001,
-               bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem",
-               ipv6: bool = False):
+def Fileserver(path: str = ".", host: str = "::", port: int = 5001,
+               bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
     """
     快速构建文件服务器. 阻塞进程. 默认使用 HTTP
 
@@ -799,15 +708,14 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
     >>> fs()  # 在当前目录启动文件服务器
 
     :param path: 工作目录(共享目录路径)
-    :param host: IP 默认为本地计算机的IP地址
+    :param host: IP 默认为本地计算机的IP地址 默认为 "::"
     :param port: 端口 默认为5001
     :param bool_https: 是否启用HTTPS. 默认为False
     :param certfile: SSL证书文件路径. 默认同目录下的 cert.pem
     :param keyfile: SSL私钥文件路径. 默认同目录下的 privkey.pem
-    :param ipv6: 是否启用IPv6支持. 默认为False
     :return: None
     """
-    path = fix_path(path)
+    path = __fix_path(path)
     # 路径预处理：兼容Unicode路径
     try:
         # 显式转换为Unicode路径
@@ -820,40 +728,59 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
     except Exception as err:
         raise ValueError(f"无效的共享目录路径: {path}") from err
 
-    if not host:
-        if ipv6:
-            host = "::"  # IPv6通配符地址
+    # 端口默认值设置
+    port = port or 5001
+    host = host or "::"
+
+    td = validate_ip(host)  # 校验并标准化IP地址
+    if td["valid"]:
+        host = td["normalized"]
+        bool_ipv6 = True if td["type"] == "IPv6" else False
+    else:
+        raise ValueError(f"无效的IP地址: {host}")
+
+    # 服务器类（支持双栈）
+    class DualStackServer(ThreadingMixIn, HTTPServer):
+        address_family = socket.AF_INET6 if bool_ipv6 else socket.AF_INET
+
+        def server_bind(self):
+            # 启用地址重用
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # 如果是IPv6，启用双栈支持
+            if bool_ipv6:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            super().server_bind()
+
+    # 创建服务器实例
+    server_address = (host, port)
+
+    try:
+        httpd = DualStackServer(server_address, __EnhancedHTTPRequestHandler)
+    except Exception as e:
+        if "Address family not supported" in str(e) and bool_ipv6:
+            # IPv6失败时回退到IPv4
+            print("IPv6不可用，使用IPv4")
+            httpd = ThreadingTCPServer(server_address, __EnhancedHTTPRequestHandler)
         else:
-            host = getip(-1)
+            raise e from None
 
-    if not port:
-        port = 5001
-
-    # 创建适当的服务器类以支持IPv6
-    class IPv6ThreadingHTTPServer(ThreadingHTTPServer):
-        address_family = socket.AF_INET6
-
-    class IPv6ThreadingTCPServer(ThreadingTCPServer):
-        address_family = socket.AF_INET6
-
+    # HTTPS处理
+    protocol = "http"
     if bool_https:
-        if ipv6:
-            httpd = IPv6ThreadingHTTPServer((host, port, 0, 0), EnhancedHTTPRequestHandler)
-        else:
-            httpd = ThreadingHTTPServer((host, port), EnhancedHTTPRequestHandler)
+        protocol = "https"
         context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(certfile, keyfile)
         httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-        protocol = "https"
-    else:
-        if ipv6:
-            httpd = IPv6ThreadingTCPServer((host, port, 0, 0), EnhancedHTTPRequestHandler)
-        else:
-            httpd = ThreadingTCPServer((host, port), EnhancedHTTPRequestHandler)
-        protocol = "http"
 
-    print(f"{protocol.upper()} service running at {protocol}://"
-          f"{f'[{host}]' if ipv6 else host}:{port}")
+    if host != "::":
+        print(f"{protocol.upper()} service running at {protocol}://"
+              f"{f'[{host}]' if bool_ipv6 else host}:{port}")
+    else:
+        print(f"{protocol.upper()} service running at")
+        for i in getip():
+            ipinfo = validate_ip(i)
+            norip = ipinfo["normalized"]
+            print(f"{protocol}://{f'[{norip}]' if ipinfo['type'] == 'IPv6' else norip}:{port}")
 
     os.chdir(path)  # 设置工作目录作为共享目录路径
 
@@ -861,5 +788,3 @@ def Fileserver(path: str = ".", host: str = "", port: int = 5001,
 
     threading.Thread(target=httpd.serve_forever).start()
     return httpd
-
-

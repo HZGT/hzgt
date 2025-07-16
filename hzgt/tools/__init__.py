@@ -15,7 +15,7 @@ from .REGISTER import Func_Register, Class_Register
 from .FTP import Ftpserver, Ftpclient
 
 # 文件服务器
-from .FileServer import Fileserver, getip
+from .FileServer import Fileserver
 
 # 读取ini文件 / 保存ini文件
 from .INI import readini, saveini
@@ -24,13 +24,13 @@ from .INI import readini, saveini
 # from .INI import getbyjs, ende_dict, PUBLICKEY, PRIVATEKEY, encrypt_rsa, decrypt_rsa
 
 # SMTP
-from .SMTP import Smtpop, Imapop
+from .SMTP import Smtpop
 
 __all__ = ['Mqttop',
            'Mysqlop', 'SQLiteop',
            'Func_Register', 'Class_Register',
            'Ftpserver', 'Ftpclient',
-           'Fileserver', 'getip',
+           'Fileserver',
            'readini', 'saveini',  # 'getbyjs', 'ende_dict', 'PUBLICKEY', 'PRIVATEKEY', 'encrypt_rsa', 'decrypt_rsa',
-           'Smtpop', 'Imapop',
+           'Smtpop',
            ]

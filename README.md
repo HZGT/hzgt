@@ -11,7 +11,7 @@
   * 类[MYSQL](#class-mysql)
   * 类[Ftpserver](#class-ftpserver)
   * 类[Smtpop](#class-smtpop)
-  * 类[AutoConfig](#AutoConfig)
+  * 类[AutoConfig](#class-autoconfig)
   
   * 函数[Fileserver](#func-fileserver)
   * 函数[readini](#func-readini)

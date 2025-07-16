@@ -7,7 +7,7 @@ from hzgt.core.Decorator import vargs
 from hzgt.core.fileop import ensure_file
 from hzgt.core.strop import restrop
 
-LOG_LEVEL_DICT = {
+__LOG_LEVEL_DICT = {
     0: logging.NOTSET,
     1: logging.DEBUG,
     2: logging.INFO,
@@ -41,7 +41,7 @@ LOG_LEVEL_DICT = {
     "CRITICAL": logging.CRITICAL,
 }
 
-LEVEL_NAME_DICT = {
+__LEVEL_NAME_DICT = {
     0: "NOTSET",
     1: "DEBUG",
     2: "INFO",
@@ -76,7 +76,7 @@ LEVEL_NAME_DICT = {
 }
 
 
-@vargs({"level": set(LOG_LEVEL_DICT.keys())})
+@vargs({"level": set(__LOG_LEVEL_DICT.keys())})
 def set_log(
         name: Optional[str] = None,
         fpath: Optional[str] = ".",
@@ -109,7 +109,7 @@ def set_log(
 
     # 检查是否已有处理器，避免重复添加
     if logger.handlers and not force_reconfigure:
-        logger.setLevel(LOG_LEVEL_DICT[level])
+        logger.setLevel(__LOG_LEVEL_DICT[level])
         return logger
 
     # 清理现有处理器（如果需要重新配置）
@@ -119,7 +119,7 @@ def set_log(
             logger.removeHandler(handler)
 
     # 设置日志级别
-    logger.setLevel(LOG_LEVEL_DICT[level])
+    logger.setLevel(__LOG_LEVEL_DICT[level])
     logger.propagate = False  # 防止日志传播到根日志器
 
     # 创建控制台处理器
@@ -150,7 +150,7 @@ def set_log(
         logger.debug(f"日志文件路径: {os.path.abspath(logfile)}")
 
     # 可选：记录日志级别
-    level_name = LEVEL_NAME_DICT[level]
+    level_name = __LEVEL_NAME_DICT[level]
     logger.debug(f"日志级别: {level} - {level_name}")
 
     return logger
