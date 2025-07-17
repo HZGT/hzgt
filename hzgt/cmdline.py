@@ -94,11 +94,6 @@ __HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  # 让 -h 与 --h
 @click.group(context_settings=__HELP_CTRL_SET_DICT)
 def __losf():
     """
-    ftps  FTP服务端
-
-    fs    HZGT文件服务器
-
-    ips 输出IP列表
     """
     pass
 

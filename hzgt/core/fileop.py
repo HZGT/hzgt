@@ -3,6 +3,7 @@
 import os
 
 import urllib.request
+from typing import Optional
 
 
 def bitconv(fsize: int):
@@ -98,3 +99,38 @@ def ensure_file(file_path: str) -> None:
     # 安全创建文件（仅当文件不存在时）
     if not os.path.exists(normalized_path):
         open(normalized_path, 'a').close()
+
+
+def make_filename(
+    name: str,
+    fname: Optional[str] = None,
+    suffix: str = ".log"
+) -> str:
+    """
+    生成文件名（避免双重扩展，支持自定义后缀）
+
+    :param name: 基础名称（当 fname 未提供时使用）
+    :param fname: 可选的自定义文件名
+    :param suffix: 期望的文件后缀（必须以点开头，默认为 .log）
+    :return: 正确的文件名（确保以指定的 suffix 结尾）
+    """
+    if not suffix.startswith("."):
+        suffix = f".{suffix.lstrip('.')}"
+
+    # 优先使用 fname
+    if fname is not None:
+        base, _, ext = fname.rpartition(".")
+        if ext and fname.endswith(suffix):
+            return fname
+        if base:  # 有其它扩展名或无扩展名
+            return f"{base}{suffix}"
+        return f"{fname}{suffix}"
+
+    # 处理 name
+    base, _, ext = name.rpartition(".")
+    if ext and name.endswith(suffix):
+        return name
+    if base:
+        return f"{base}{suffix}"
+    return f"{name}{suffix}"
+

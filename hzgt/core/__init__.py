@@ -19,11 +19,15 @@ from .ipss import getip, validate_ip
 # 自动配置类
 from .autoconfig import AutoConfig
 
-__all__ = [
+# cmd
+from .cmdutils import is_admin, require_admin, execute_command, run_as_admin, check_admin_and_prompt
+
+__all__ = CORE_ALL = [
     "pic", "restrop",
     "bitconv", "getfsize", "ensure_file",
     "gettime", "vargs",
     "set_log",
     "getip", "validate_ip",
-    "AutoConfig"
+    "AutoConfig",
+    "is_admin", "require_admin", "execute_command", "run_as_admin", "check_admin_and_prompt",
 ]

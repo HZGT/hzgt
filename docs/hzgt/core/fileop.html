@@ -79,6 +79,9 @@
             <li>
                     <a class="function" href="#ensure_file">ensure_file</a>
             </li>
+            <li>
+                    <a class="function" href="#make_filename">make_filename</a>
+            </li>
     </ul>
 
 
@@ -105,101 +108,136 @@ hzgt<wbr>.core<wbr>.fileop    </h1>
 </span><span id="L-3"><a href="#L-3"><span class="linenos">  3</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 </span><span id="L-4"><a href="#L-4"><span class="linenos">  4</span></a>
 </span><span id="L-5"><a href="#L-5"><span class="linenos">  5</span></a><span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
-</span><span id="L-6"><a href="#L-6"><span class="linenos">  6</span></a>
+</span><span id="L-6"><a href="#L-6"><span class="linenos">  6</span></a><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
 </span><span id="L-7"><a href="#L-7"><span class="linenos">  7</span></a>
-</span><span id="L-8"><a href="#L-8"><span class="linenos">  8</span></a><span class="k">def</span><span class="w"> </span><span class="nf">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-</span><span id="L-9"><a href="#L-9"><span class="linenos">  9</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-10"><a href="#L-10"><span class="linenos"> 10</span></a><span class="sd">    字节单位转换</span>
-</span><span id="L-11"><a href="#L-11"><span class="linenos"> 11</span></a>
-</span><span id="L-12"><a href="#L-12"><span class="linenos"> 12</span></a><span class="sd">    :param fsize: 大小（字节）</span>
-</span><span id="L-13"><a href="#L-13"><span class="linenos"> 13</span></a><span class="sd">    :return: 转换后的大小（保留两位小数），单位</span>
-</span><span id="L-14"><a href="#L-14"><span class="linenos"> 14</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="L-15"><a href="#L-15"><span class="linenos"> 15</span></a>    <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Byte&quot;</span><span class="p">,</span> <span class="s2">&quot;KB&quot;</span><span class="p">,</span> <span class="s2">&quot;MB&quot;</span><span class="p">,</span> <span class="s2">&quot;GB&quot;</span><span class="p">,</span> <span class="s2">&quot;TB&quot;</span><span class="p">,</span> <span class="s2">&quot;PB&quot;</span><span class="p">,</span> <span class="s2">&quot;EB&quot;</span><span class="p">,</span> <span class="s2">&quot;ZB&quot;</span><span class="p">,</span> <span class="s2">&quot;YB&quot;</span><span class="p">,</span> <span class="s2">&quot;BB&quot;</span><span class="p">]</span>
-</span><span id="L-16"><a href="#L-16"><span class="linenos"> 16</span></a>    <span class="n">size</span> <span class="o">=</span> <span class="n">fsize</span>
-</span><span id="L-17"><a href="#L-17"><span class="linenos"> 17</span></a>    <span class="n">unit_index</span> <span class="o">=</span> <span class="mi">0</span>
-</span><span id="L-18"><a href="#L-18"><span class="linenos"> 18</span></a>
-</span><span id="L-19"><a href="#L-19"><span class="linenos"> 19</span></a>    <span class="k">while</span> <span class="n">size</span> <span class="o">&gt;=</span> <span class="mi">1024</span> <span class="ow">and</span> <span class="n">unit_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">units</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
-</span><span id="L-20"><a href="#L-20"><span class="linenos"> 20</span></a>        <span class="n">size</span> <span class="o">/=</span> <span class="mf">1024.0</span>
-</span><span id="L-21"><a href="#L-21"><span class="linenos"> 21</span></a>        <span class="n">unit_index</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span id="L-22"><a href="#L-22"><span class="linenos"> 22</span></a>
-</span><span id="L-23"><a href="#L-23"><span class="linenos"> 23</span></a>    <span class="k">if</span> <span class="n">unit_index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># Byte 单位时返回整数</span>
-</span><span id="L-24"><a href="#L-24"><span class="linenos"> 24</span></a>        <span class="k">return</span> <span class="n">size</span><span class="p">,</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
-</span><span id="L-25"><a href="#L-25"><span class="linenos"> 25</span></a>    <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
-</span><span id="L-26"><a href="#L-26"><span class="linenos"> 26</span></a>
+</span><span id="L-8"><a href="#L-8"><span class="linenos">  8</span></a>
+</span><span id="L-9"><a href="#L-9"><span class="linenos">  9</span></a><span class="k">def</span><span class="w"> </span><span class="nf">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+</span><span id="L-10"><a href="#L-10"><span class="linenos"> 10</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-11"><a href="#L-11"><span class="linenos"> 11</span></a><span class="sd">    字节单位转换</span>
+</span><span id="L-12"><a href="#L-12"><span class="linenos"> 12</span></a>
+</span><span id="L-13"><a href="#L-13"><span class="linenos"> 13</span></a><span class="sd">    :param fsize: 大小（字节）</span>
+</span><span id="L-14"><a href="#L-14"><span class="linenos"> 14</span></a><span class="sd">    :return: 转换后的大小（保留两位小数），单位</span>
+</span><span id="L-15"><a href="#L-15"><span class="linenos"> 15</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-16"><a href="#L-16"><span class="linenos"> 16</span></a>    <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Byte&quot;</span><span class="p">,</span> <span class="s2">&quot;KB&quot;</span><span class="p">,</span> <span class="s2">&quot;MB&quot;</span><span class="p">,</span> <span class="s2">&quot;GB&quot;</span><span class="p">,</span> <span class="s2">&quot;TB&quot;</span><span class="p">,</span> <span class="s2">&quot;PB&quot;</span><span class="p">,</span> <span class="s2">&quot;EB&quot;</span><span class="p">,</span> <span class="s2">&quot;ZB&quot;</span><span class="p">,</span> <span class="s2">&quot;YB&quot;</span><span class="p">,</span> <span class="s2">&quot;BB&quot;</span><span class="p">]</span>
+</span><span id="L-17"><a href="#L-17"><span class="linenos"> 17</span></a>    <span class="n">size</span> <span class="o">=</span> <span class="n">fsize</span>
+</span><span id="L-18"><a href="#L-18"><span class="linenos"> 18</span></a>    <span class="n">unit_index</span> <span class="o">=</span> <span class="mi">0</span>
+</span><span id="L-19"><a href="#L-19"><span class="linenos"> 19</span></a>
+</span><span id="L-20"><a href="#L-20"><span class="linenos"> 20</span></a>    <span class="k">while</span> <span class="n">size</span> <span class="o">&gt;=</span> <span class="mi">1024</span> <span class="ow">and</span> <span class="n">unit_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">units</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+</span><span id="L-21"><a href="#L-21"><span class="linenos"> 21</span></a>        <span class="n">size</span> <span class="o">/=</span> <span class="mf">1024.0</span>
+</span><span id="L-22"><a href="#L-22"><span class="linenos"> 22</span></a>        <span class="n">unit_index</span> <span class="o">+=</span> <span class="mi">1</span>
+</span><span id="L-23"><a href="#L-23"><span class="linenos"> 23</span></a>
+</span><span id="L-24"><a href="#L-24"><span class="linenos"> 24</span></a>    <span class="k">if</span> <span class="n">unit_index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># Byte 单位时返回整数</span>
+</span><span id="L-25"><a href="#L-25"><span class="linenos"> 25</span></a>        <span class="k">return</span> <span class="n">size</span><span class="p">,</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
+</span><span id="L-26"><a href="#L-26"><span class="linenos"> 26</span></a>    <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
 </span><span id="L-27"><a href="#L-27"><span class="linenos"> 27</span></a>
-</span><span id="L-28"><a href="#L-28"><span class="linenos"> 28</span></a><span class="k">def</span><span class="w"> </span><span class="nf">__get_dir_size</span><span class="p">(</span><span class="n">dirpath</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-</span><span id="L-29"><a href="#L-29"><span class="linenos"> 29</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-30"><a href="#L-30"><span class="linenos"> 30</span></a><span class="sd">    :param dirpath:目录或者文件</span>
-</span><span id="L-31"><a href="#L-31"><span class="linenos"> 31</span></a><span class="sd">    :return: size: 目录或者文件的大小</span>
-</span><span id="L-32"><a href="#L-32"><span class="linenos"> 32</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="L-33"><a href="#L-33"><span class="linenos"> 33</span></a>    <span class="n">size</span> <span class="o">=</span> <span class="mi">0</span>
-</span><span id="L-34"><a href="#L-34"><span class="linenos"> 34</span></a>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dirpath</span><span class="p">):</span>  <span class="c1"># 如果是目录</span>
-</span><span id="L-35"><a href="#L-35"><span class="linenos"> 35</span></a>        <span class="k">for</span> <span class="n">root</span><span class="p">,</span> <span class="n">dirs</span><span class="p">,</span> <span class="n">files</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">dirpath</span><span class="p">):</span>
-</span><span id="L-36"><a href="#L-36"><span class="linenos"> 36</span></a>            <span class="n">size</span> <span class="o">+=</span> <span class="nb">sum</span><span class="p">([</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">files</span><span class="p">])</span>
-</span><span id="L-37"><a href="#L-37"><span class="linenos"> 37</span></a>        <span class="k">return</span> <span class="n">size</span>
-</span><span id="L-38"><a href="#L-38"><span class="linenos"> 38</span></a>    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">dirpath</span><span class="p">):</span>  <span class="c1"># 如果是文件</span>
-</span><span id="L-39"><a href="#L-39"><span class="linenos"> 39</span></a>        <span class="n">size</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">dirpath</span><span class="p">)</span>
-</span><span id="L-40"><a href="#L-40"><span class="linenos"> 40</span></a>        <span class="k">return</span> <span class="n">size</span>
-</span><span id="L-41"><a href="#L-41"><span class="linenos"> 41</span></a>    <span class="k">else</span><span class="p">:</span>
-</span><span id="L-42"><a href="#L-42"><span class="linenos"> 42</span></a>        <span class="k">raise</span> <span class="ne">NotADirectoryError</span><span class="p">(</span><span class="s2">&quot;目录/文件 不存在&quot;</span><span class="p">)</span>
-</span><span id="L-43"><a href="#L-43"><span class="linenos"> 43</span></a>
+</span><span id="L-28"><a href="#L-28"><span class="linenos"> 28</span></a>
+</span><span id="L-29"><a href="#L-29"><span class="linenos"> 29</span></a><span class="k">def</span><span class="w"> </span><span class="nf">__get_dir_size</span><span class="p">(</span><span class="n">dirpath</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+</span><span id="L-30"><a href="#L-30"><span class="linenos"> 30</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-31"><a href="#L-31"><span class="linenos"> 31</span></a><span class="sd">    :param dirpath:目录或者文件</span>
+</span><span id="L-32"><a href="#L-32"><span class="linenos"> 32</span></a><span class="sd">    :return: size: 目录或者文件的大小</span>
+</span><span id="L-33"><a href="#L-33"><span class="linenos"> 33</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-34"><a href="#L-34"><span class="linenos"> 34</span></a>    <span class="n">size</span> <span class="o">=</span> <span class="mi">0</span>
+</span><span id="L-35"><a href="#L-35"><span class="linenos"> 35</span></a>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dirpath</span><span class="p">):</span>  <span class="c1"># 如果是目录</span>
+</span><span id="L-36"><a href="#L-36"><span class="linenos"> 36</span></a>        <span class="k">for</span> <span class="n">root</span><span class="p">,</span> <span class="n">dirs</span><span class="p">,</span> <span class="n">files</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">dirpath</span><span class="p">):</span>
+</span><span id="L-37"><a href="#L-37"><span class="linenos"> 37</span></a>            <span class="n">size</span> <span class="o">+=</span> <span class="nb">sum</span><span class="p">([</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">files</span><span class="p">])</span>
+</span><span id="L-38"><a href="#L-38"><span class="linenos"> 38</span></a>        <span class="k">return</span> <span class="n">size</span>
+</span><span id="L-39"><a href="#L-39"><span class="linenos"> 39</span></a>    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">dirpath</span><span class="p">):</span>  <span class="c1"># 如果是文件</span>
+</span><span id="L-40"><a href="#L-40"><span class="linenos"> 40</span></a>        <span class="n">size</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">dirpath</span><span class="p">)</span>
+</span><span id="L-41"><a href="#L-41"><span class="linenos"> 41</span></a>        <span class="k">return</span> <span class="n">size</span>
+</span><span id="L-42"><a href="#L-42"><span class="linenos"> 42</span></a>    <span class="k">else</span><span class="p">:</span>
+</span><span id="L-43"><a href="#L-43"><span class="linenos"> 43</span></a>        <span class="k">raise</span> <span class="ne">NotADirectoryError</span><span class="p">(</span><span class="s2">&quot;目录/文件 不存在&quot;</span><span class="p">)</span>
 </span><span id="L-44"><a href="#L-44"><span class="linenos"> 44</span></a>
-</span><span id="L-45"><a href="#L-45"><span class="linenos"> 45</span></a><span class="k">def</span><span class="w"> </span><span class="nf">getfsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">):</span>
-</span><span id="L-46"><a href="#L-46"><span class="linenos"> 46</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-47"><a href="#L-47"><span class="linenos"> 47</span></a><span class="sd">    获取目录、文件或URL指向的资源的总大小</span>
-</span><span id="L-48"><a href="#L-48"><span class="linenos"> 48</span></a>
-</span><span id="L-49"><a href="#L-49"><span class="linenos"> 49</span></a><span class="sd">    :param filepath: 目录路径、文件路径或URL</span>
-</span><span id="L-50"><a href="#L-50"><span class="linenos"> 50</span></a><span class="sd">    :param timeout: URL文件请求超时时间</span>
-</span><span id="L-51"><a href="#L-51"><span class="linenos"> 51</span></a><span class="sd">    :return: 转换后的大小和单位元组，如(6.66, &#39;MB&#39;)。失败时报错</span>
-</span><span id="L-52"><a href="#L-52"><span class="linenos"> 52</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="L-53"><a href="#L-53"><span class="linenos"> 53</span></a>    <span class="c1"># 先尝试作为本地路径处理</span>
-</span><span id="L-54"><a href="#L-54"><span class="linenos"> 54</span></a>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
-</span><span id="L-55"><a href="#L-55"><span class="linenos"> 55</span></a>        <span class="k">try</span><span class="p">:</span>
-</span><span id="L-56"><a href="#L-56"><span class="linenos"> 56</span></a>            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
-</span><span id="L-57"><a href="#L-57"><span class="linenos"> 57</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">__get_dir_size</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 目录大小</span>
-</span><span id="L-58"><a href="#L-58"><span class="linenos"> 58</span></a>            <span class="k">else</span><span class="p">:</span>
-</span><span id="L-59"><a href="#L-59"><span class="linenos"> 59</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 文件大小</span>
-</span><span id="L-60"><a href="#L-60"><span class="linenos"> 60</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
-</span><span id="L-61"><a href="#L-61"><span class="linenos"> 61</span></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-</span><span id="L-62"><a href="#L-62"><span class="linenos"> 62</span></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;本地路径处理错误: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="L-63"><a href="#L-63"><span class="linenos"> 63</span></a>
-</span><span id="L-64"><a href="#L-64"><span class="linenos"> 64</span></a>    <span class="c1"># 尝试作为URL处理</span>
-</span><span id="L-65"><a href="#L-65"><span class="linenos"> 65</span></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="L-66"><a href="#L-66"><span class="linenos"> 66</span></a>        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span>
-</span><span id="L-67"><a href="#L-67"><span class="linenos"> 67</span></a>            <span class="n">fsize</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">])</span>
-</span><span id="L-68"><a href="#L-68"><span class="linenos"> 68</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
-</span><span id="L-69"><a href="#L-69"><span class="linenos"> 69</span></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
-</span><span id="L-70"><a href="#L-70"><span class="linenos"> 70</span></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;URL处理错误: </span><span class="si">{</span><span class="n">err</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="L-71"><a href="#L-71"><span class="linenos"> 71</span></a>
+</span><span id="L-45"><a href="#L-45"><span class="linenos"> 45</span></a>
+</span><span id="L-46"><a href="#L-46"><span class="linenos"> 46</span></a><span class="k">def</span><span class="w"> </span><span class="nf">getfsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">):</span>
+</span><span id="L-47"><a href="#L-47"><span class="linenos"> 47</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-48"><a href="#L-48"><span class="linenos"> 48</span></a><span class="sd">    获取目录、文件或URL指向的资源的总大小</span>
+</span><span id="L-49"><a href="#L-49"><span class="linenos"> 49</span></a>
+</span><span id="L-50"><a href="#L-50"><span class="linenos"> 50</span></a><span class="sd">    :param filepath: 目录路径、文件路径或URL</span>
+</span><span id="L-51"><a href="#L-51"><span class="linenos"> 51</span></a><span class="sd">    :param timeout: URL文件请求超时时间</span>
+</span><span id="L-52"><a href="#L-52"><span class="linenos"> 52</span></a><span class="sd">    :return: 转换后的大小和单位元组，如(6.66, &#39;MB&#39;)。失败时报错</span>
+</span><span id="L-53"><a href="#L-53"><span class="linenos"> 53</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-54"><a href="#L-54"><span class="linenos"> 54</span></a>    <span class="c1"># 先尝试作为本地路径处理</span>
+</span><span id="L-55"><a href="#L-55"><span class="linenos"> 55</span></a>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+</span><span id="L-56"><a href="#L-56"><span class="linenos"> 56</span></a>        <span class="k">try</span><span class="p">:</span>
+</span><span id="L-57"><a href="#L-57"><span class="linenos"> 57</span></a>            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+</span><span id="L-58"><a href="#L-58"><span class="linenos"> 58</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">__get_dir_size</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 目录大小</span>
+</span><span id="L-59"><a href="#L-59"><span class="linenos"> 59</span></a>            <span class="k">else</span><span class="p">:</span>
+</span><span id="L-60"><a href="#L-60"><span class="linenos"> 60</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 文件大小</span>
+</span><span id="L-61"><a href="#L-61"><span class="linenos"> 61</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
+</span><span id="L-62"><a href="#L-62"><span class="linenos"> 62</span></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+</span><span id="L-63"><a href="#L-63"><span class="linenos"> 63</span></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;本地路径处理错误: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="L-64"><a href="#L-64"><span class="linenos"> 64</span></a>
+</span><span id="L-65"><a href="#L-65"><span class="linenos"> 65</span></a>    <span class="c1"># 尝试作为URL处理</span>
+</span><span id="L-66"><a href="#L-66"><span class="linenos"> 66</span></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="L-67"><a href="#L-67"><span class="linenos"> 67</span></a>        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span>
+</span><span id="L-68"><a href="#L-68"><span class="linenos"> 68</span></a>            <span class="n">fsize</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">])</span>
+</span><span id="L-69"><a href="#L-69"><span class="linenos"> 69</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
+</span><span id="L-70"><a href="#L-70"><span class="linenos"> 70</span></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+</span><span id="L-71"><a href="#L-71"><span class="linenos"> 71</span></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;URL处理错误: </span><span class="si">{</span><span class="n">err</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="L-72"><a href="#L-72"><span class="linenos"> 72</span></a>
-</span><span id="L-73"><a href="#L-73"><span class="linenos"> 73</span></a><span class="k">def</span><span class="w"> </span><span class="nf">ensure_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="L-74"><a href="#L-74"><span class="linenos"> 74</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="L-75"><a href="#L-75"><span class="linenos"> 75</span></a><span class="sd">    确保文件及其目录存在。如果目录或文件不存在，则创建它们。</span>
-</span><span id="L-76"><a href="#L-76"><span class="linenos"> 76</span></a><span class="sd">    增强对Windows系统同名文件冲突的处理。</span>
-</span><span id="L-77"><a href="#L-77"><span class="linenos"> 77</span></a>
-</span><span id="L-78"><a href="#L-78"><span class="linenos"> 78</span></a><span class="sd">    :param file_path: 文件路径</span>
-</span><span id="L-79"><a href="#L-79"><span class="linenos"> 79</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="L-80"><a href="#L-80"><span class="linenos"> 80</span></a>    <span class="c1"># 标准化路径并获取目录路径</span>
-</span><span id="L-81"><a href="#L-81"><span class="linenos"> 81</span></a>    <span class="n">normalized_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
-</span><span id="L-82"><a href="#L-82"><span class="linenos"> 82</span></a>    <span class="n">dir_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">)</span>
-</span><span id="L-83"><a href="#L-83"><span class="linenos"> 83</span></a>
-</span><span id="L-84"><a href="#L-84"><span class="linenos"> 84</span></a>    <span class="c1"># 仅当目录路径非空时才处理目录创建</span>
-</span><span id="L-85"><a href="#L-85"><span class="linenos"> 85</span></a>    <span class="k">if</span> <span class="n">dir_path</span><span class="p">:</span>
-</span><span id="L-86"><a href="#L-86"><span class="linenos"> 86</span></a>        <span class="c1"># 检查路径是否已存在</span>
-</span><span id="L-87"><a href="#L-87"><span class="linenos"> 87</span></a>        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
-</span><span id="L-88"><a href="#L-88"><span class="linenos"> 88</span></a>            <span class="c1"># 如果路径存在但不是目录（即文件），则引发错误</span>
-</span><span id="L-89"><a href="#L-89"><span class="linenos"> 89</span></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
-</span><span id="L-90"><a href="#L-90"><span class="linenos"> 90</span></a>                <span class="k">raise</span> <span class="ne">FileExistsError</span><span class="p">(</span>
-</span><span id="L-91"><a href="#L-91"><span class="linenos"> 91</span></a>                    <span class="sa">f</span><span class="s2">&quot;创建目录失败 &#39;</span><span class="si">{</span><span class="n">dir_path</span><span class="si">}</span><span class="s2">&#39; 因为该路径已存在且不是目录&quot;</span>
-</span><span id="L-92"><a href="#L-92"><span class="linenos"> 92</span></a>                <span class="p">)</span>
-</span><span id="L-93"><a href="#L-93"><span class="linenos"> 93</span></a>            <span class="c1"># 如果是目录，则跳过创建（正常情况）</span>
-</span><span id="L-94"><a href="#L-94"><span class="linenos"> 94</span></a>        <span class="k">else</span><span class="p">:</span>
-</span><span id="L-95"><a href="#L-95"><span class="linenos"> 95</span></a>            <span class="c1"># 路径不存在，安全创建目录</span>
-</span><span id="L-96"><a href="#L-96"><span class="linenos"> 96</span></a>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">dir_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="L-97"><a href="#L-97"><span class="linenos"> 97</span></a>
-</span><span id="L-98"><a href="#L-98"><span class="linenos"> 98</span></a>    <span class="c1"># 安全创建文件（仅当文件不存在时）</span>
-</span><span id="L-99"><a href="#L-99"><span class="linenos"> 99</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">):</span>
-</span><span id="L-100"><a href="#L-100"><span class="linenos">100</span></a>        <span class="nb">open</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</span><span id="L-73"><a href="#L-73"><span class="linenos"> 73</span></a>
+</span><span id="L-74"><a href="#L-74"><span class="linenos"> 74</span></a><span class="k">def</span><span class="w"> </span><span class="nf">ensure_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="L-75"><a href="#L-75"><span class="linenos"> 75</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-76"><a href="#L-76"><span class="linenos"> 76</span></a><span class="sd">    确保文件及其目录存在。如果目录或文件不存在，则创建它们。</span>
+</span><span id="L-77"><a href="#L-77"><span class="linenos"> 77</span></a><span class="sd">    增强对Windows系统同名文件冲突的处理。</span>
+</span><span id="L-78"><a href="#L-78"><span class="linenos"> 78</span></a>
+</span><span id="L-79"><a href="#L-79"><span class="linenos"> 79</span></a><span class="sd">    :param file_path: 文件路径</span>
+</span><span id="L-80"><a href="#L-80"><span class="linenos"> 80</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-81"><a href="#L-81"><span class="linenos"> 81</span></a>    <span class="c1"># 标准化路径并获取目录路径</span>
+</span><span id="L-82"><a href="#L-82"><span class="linenos"> 82</span></a>    <span class="n">normalized_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+</span><span id="L-83"><a href="#L-83"><span class="linenos"> 83</span></a>    <span class="n">dir_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">)</span>
+</span><span id="L-84"><a href="#L-84"><span class="linenos"> 84</span></a>
+</span><span id="L-85"><a href="#L-85"><span class="linenos"> 85</span></a>    <span class="c1"># 仅当目录路径非空时才处理目录创建</span>
+</span><span id="L-86"><a href="#L-86"><span class="linenos"> 86</span></a>    <span class="k">if</span> <span class="n">dir_path</span><span class="p">:</span>
+</span><span id="L-87"><a href="#L-87"><span class="linenos"> 87</span></a>        <span class="c1"># 检查路径是否已存在</span>
+</span><span id="L-88"><a href="#L-88"><span class="linenos"> 88</span></a>        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
+</span><span id="L-89"><a href="#L-89"><span class="linenos"> 89</span></a>            <span class="c1"># 如果路径存在但不是目录（即文件），则引发错误</span>
+</span><span id="L-90"><a href="#L-90"><span class="linenos"> 90</span></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
+</span><span id="L-91"><a href="#L-91"><span class="linenos"> 91</span></a>                <span class="k">raise</span> <span class="ne">FileExistsError</span><span class="p">(</span>
+</span><span id="L-92"><a href="#L-92"><span class="linenos"> 92</span></a>                    <span class="sa">f</span><span class="s2">&quot;创建目录失败 &#39;</span><span class="si">{</span><span class="n">dir_path</span><span class="si">}</span><span class="s2">&#39; 因为该路径已存在且不是目录&quot;</span>
+</span><span id="L-93"><a href="#L-93"><span class="linenos"> 93</span></a>                <span class="p">)</span>
+</span><span id="L-94"><a href="#L-94"><span class="linenos"> 94</span></a>            <span class="c1"># 如果是目录，则跳过创建（正常情况）</span>
+</span><span id="L-95"><a href="#L-95"><span class="linenos"> 95</span></a>        <span class="k">else</span><span class="p">:</span>
+</span><span id="L-96"><a href="#L-96"><span class="linenos"> 96</span></a>            <span class="c1"># 路径不存在，安全创建目录</span>
+</span><span id="L-97"><a href="#L-97"><span class="linenos"> 97</span></a>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">dir_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="L-98"><a href="#L-98"><span class="linenos"> 98</span></a>
+</span><span id="L-99"><a href="#L-99"><span class="linenos"> 99</span></a>    <span class="c1"># 安全创建文件（仅当文件不存在时）</span>
+</span><span id="L-100"><a href="#L-100"><span class="linenos">100</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">):</span>
+</span><span id="L-101"><a href="#L-101"><span class="linenos">101</span></a>        <span class="nb">open</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</span><span id="L-102"><a href="#L-102"><span class="linenos">102</span></a>
+</span><span id="L-103"><a href="#L-103"><span class="linenos">103</span></a>
+</span><span id="L-104"><a href="#L-104"><span class="linenos">104</span></a><span class="k">def</span><span class="w"> </span><span class="nf">make_filename</span><span class="p">(</span>
+</span><span id="L-105"><a href="#L-105"><span class="linenos">105</span></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span><span id="L-106"><a href="#L-106"><span class="linenos">106</span></a>    <span class="n">fname</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="L-107"><a href="#L-107"><span class="linenos">107</span></a>    <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;.log&quot;</span>
+</span><span id="L-108"><a href="#L-108"><span class="linenos">108</span></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="L-109"><a href="#L-109"><span class="linenos">109</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="L-110"><a href="#L-110"><span class="linenos">110</span></a><span class="sd">    生成文件名（避免双重扩展，支持自定义后缀）</span>
+</span><span id="L-111"><a href="#L-111"><span class="linenos">111</span></a>
+</span><span id="L-112"><a href="#L-112"><span class="linenos">112</span></a><span class="sd">    :param name: 基础名称（当 fname 未提供时使用）</span>
+</span><span id="L-113"><a href="#L-113"><span class="linenos">113</span></a><span class="sd">    :param fname: 可选的自定义文件名</span>
+</span><span id="L-114"><a href="#L-114"><span class="linenos">114</span></a><span class="sd">    :param suffix: 期望的文件后缀（必须以点开头，默认为 .log）</span>
+</span><span id="L-115"><a href="#L-115"><span class="linenos">115</span></a><span class="sd">    :return: 正确的文件名（确保以指定的 suffix 结尾）</span>
+</span><span id="L-116"><a href="#L-116"><span class="linenos">116</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="L-117"><a href="#L-117"><span class="linenos">117</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">suffix</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">):</span>
+</span><span id="L-118"><a href="#L-118"><span class="linenos">118</span></a>        <span class="n">suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">suffix</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="L-119"><a href="#L-119"><span class="linenos">119</span></a>
+</span><span id="L-120"><a href="#L-120"><span class="linenos">120</span></a>    <span class="c1"># 优先使用 fname</span>
+</span><span id="L-121"><a href="#L-121"><span class="linenos">121</span></a>    <span class="k">if</span> <span class="n">fname</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="L-122"><a href="#L-122"><span class="linenos">122</span></a>        <span class="n">base</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">fname</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+</span><span id="L-123"><a href="#L-123"><span class="linenos">123</span></a>        <span class="k">if</span> <span class="n">ext</span> <span class="ow">and</span> <span class="n">fname</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
+</span><span id="L-124"><a href="#L-124"><span class="linenos">124</span></a>            <span class="k">return</span> <span class="n">fname</span>
+</span><span id="L-125"><a href="#L-125"><span class="linenos">125</span></a>        <span class="k">if</span> <span class="n">base</span><span class="p">:</span>  <span class="c1"># 有其它扩展名或无扩展名</span>
+</span><span id="L-126"><a href="#L-126"><span class="linenos">126</span></a>            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="L-127"><a href="#L-127"><span class="linenos">127</span></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fname</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="L-128"><a href="#L-128"><span class="linenos">128</span></a>
+</span><span id="L-129"><a href="#L-129"><span class="linenos">129</span></a>    <span class="c1"># 处理 name</span>
+</span><span id="L-130"><a href="#L-130"><span class="linenos">130</span></a>    <span class="n">base</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+</span><span id="L-131"><a href="#L-131"><span class="linenos">131</span></a>    <span class="k">if</span> <span class="n">ext</span> <span class="ow">and</span> <span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
+</span><span id="L-132"><a href="#L-132"><span class="linenos">132</span></a>        <span class="k">return</span> <span class="n">name</span>
+</span><span id="L-133"><a href="#L-133"><span class="linenos">133</span></a>    <span class="k">if</span> <span class="n">base</span><span class="p">:</span>
+</span><span id="L-134"><a href="#L-134"><span class="linenos">134</span></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="L-135"><a href="#L-135"><span class="linenos">135</span></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
 </span></pre></div>
 
 
@@ -215,24 +253,24 @@ hzgt<wbr>.core<wbr>.fileop    </h1>
 
     </div>
     <a class="headerlink" href="#bitconv"></a>
-            <div class="pdoc-code codehilite"><pre><span></span><span id="bitconv-9"><a href="#bitconv-9"><span class="linenos"> 9</span></a><span class="k">def</span><span class="w"> </span><span class="nf">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-</span><span id="bitconv-10"><a href="#bitconv-10"><span class="linenos">10</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="bitconv-11"><a href="#bitconv-11"><span class="linenos">11</span></a><span class="sd">    字节单位转换</span>
-</span><span id="bitconv-12"><a href="#bitconv-12"><span class="linenos">12</span></a>
-</span><span id="bitconv-13"><a href="#bitconv-13"><span class="linenos">13</span></a><span class="sd">    :param fsize: 大小（字节）</span>
-</span><span id="bitconv-14"><a href="#bitconv-14"><span class="linenos">14</span></a><span class="sd">    :return: 转换后的大小（保留两位小数），单位</span>
-</span><span id="bitconv-15"><a href="#bitconv-15"><span class="linenos">15</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="bitconv-16"><a href="#bitconv-16"><span class="linenos">16</span></a>    <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Byte&quot;</span><span class="p">,</span> <span class="s2">&quot;KB&quot;</span><span class="p">,</span> <span class="s2">&quot;MB&quot;</span><span class="p">,</span> <span class="s2">&quot;GB&quot;</span><span class="p">,</span> <span class="s2">&quot;TB&quot;</span><span class="p">,</span> <span class="s2">&quot;PB&quot;</span><span class="p">,</span> <span class="s2">&quot;EB&quot;</span><span class="p">,</span> <span class="s2">&quot;ZB&quot;</span><span class="p">,</span> <span class="s2">&quot;YB&quot;</span><span class="p">,</span> <span class="s2">&quot;BB&quot;</span><span class="p">]</span>
-</span><span id="bitconv-17"><a href="#bitconv-17"><span class="linenos">17</span></a>    <span class="n">size</span> <span class="o">=</span> <span class="n">fsize</span>
-</span><span id="bitconv-18"><a href="#bitconv-18"><span class="linenos">18</span></a>    <span class="n">unit_index</span> <span class="o">=</span> <span class="mi">0</span>
-</span><span id="bitconv-19"><a href="#bitconv-19"><span class="linenos">19</span></a>
-</span><span id="bitconv-20"><a href="#bitconv-20"><span class="linenos">20</span></a>    <span class="k">while</span> <span class="n">size</span> <span class="o">&gt;=</span> <span class="mi">1024</span> <span class="ow">and</span> <span class="n">unit_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">units</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
-</span><span id="bitconv-21"><a href="#bitconv-21"><span class="linenos">21</span></a>        <span class="n">size</span> <span class="o">/=</span> <span class="mf">1024.0</span>
-</span><span id="bitconv-22"><a href="#bitconv-22"><span class="linenos">22</span></a>        <span class="n">unit_index</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span id="bitconv-23"><a href="#bitconv-23"><span class="linenos">23</span></a>
-</span><span id="bitconv-24"><a href="#bitconv-24"><span class="linenos">24</span></a>    <span class="k">if</span> <span class="n">unit_index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># Byte 单位时返回整数</span>
-</span><span id="bitconv-25"><a href="#bitconv-25"><span class="linenos">25</span></a>        <span class="k">return</span> <span class="n">size</span><span class="p">,</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
-</span><span id="bitconv-26"><a href="#bitconv-26"><span class="linenos">26</span></a>    <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="bitconv-10"><a href="#bitconv-10"><span class="linenos">10</span></a><span class="k">def</span><span class="w"> </span><span class="nf">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+</span><span id="bitconv-11"><a href="#bitconv-11"><span class="linenos">11</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="bitconv-12"><a href="#bitconv-12"><span class="linenos">12</span></a><span class="sd">    字节单位转换</span>
+</span><span id="bitconv-13"><a href="#bitconv-13"><span class="linenos">13</span></a>
+</span><span id="bitconv-14"><a href="#bitconv-14"><span class="linenos">14</span></a><span class="sd">    :param fsize: 大小（字节）</span>
+</span><span id="bitconv-15"><a href="#bitconv-15"><span class="linenos">15</span></a><span class="sd">    :return: 转换后的大小（保留两位小数），单位</span>
+</span><span id="bitconv-16"><a href="#bitconv-16"><span class="linenos">16</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="bitconv-17"><a href="#bitconv-17"><span class="linenos">17</span></a>    <span class="n">units</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Byte&quot;</span><span class="p">,</span> <span class="s2">&quot;KB&quot;</span><span class="p">,</span> <span class="s2">&quot;MB&quot;</span><span class="p">,</span> <span class="s2">&quot;GB&quot;</span><span class="p">,</span> <span class="s2">&quot;TB&quot;</span><span class="p">,</span> <span class="s2">&quot;PB&quot;</span><span class="p">,</span> <span class="s2">&quot;EB&quot;</span><span class="p">,</span> <span class="s2">&quot;ZB&quot;</span><span class="p">,</span> <span class="s2">&quot;YB&quot;</span><span class="p">,</span> <span class="s2">&quot;BB&quot;</span><span class="p">]</span>
+</span><span id="bitconv-18"><a href="#bitconv-18"><span class="linenos">18</span></a>    <span class="n">size</span> <span class="o">=</span> <span class="n">fsize</span>
+</span><span id="bitconv-19"><a href="#bitconv-19"><span class="linenos">19</span></a>    <span class="n">unit_index</span> <span class="o">=</span> <span class="mi">0</span>
+</span><span id="bitconv-20"><a href="#bitconv-20"><span class="linenos">20</span></a>
+</span><span id="bitconv-21"><a href="#bitconv-21"><span class="linenos">21</span></a>    <span class="k">while</span> <span class="n">size</span> <span class="o">&gt;=</span> <span class="mi">1024</span> <span class="ow">and</span> <span class="n">unit_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">units</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+</span><span id="bitconv-22"><a href="#bitconv-22"><span class="linenos">22</span></a>        <span class="n">size</span> <span class="o">/=</span> <span class="mf">1024.0</span>
+</span><span id="bitconv-23"><a href="#bitconv-23"><span class="linenos">23</span></a>        <span class="n">unit_index</span> <span class="o">+=</span> <span class="mi">1</span>
+</span><span id="bitconv-24"><a href="#bitconv-24"><span class="linenos">24</span></a>
+</span><span id="bitconv-25"><a href="#bitconv-25"><span class="linenos">25</span></a>    <span class="k">if</span> <span class="n">unit_index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># Byte 单位时返回整数</span>
+</span><span id="bitconv-26"><a href="#bitconv-26"><span class="linenos">26</span></a>        <span class="k">return</span> <span class="n">size</span><span class="p">,</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
+</span><span id="bitconv-27"><a href="#bitconv-27"><span class="linenos">27</span></a>    <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">units</span><span class="p">[</span><span class="n">unit_index</span><span class="p">]</span>
 </span></pre></div>
 
 
@@ -264,32 +302,32 @@ hzgt<wbr>.core<wbr>.fileop    </h1>
 
     </div>
     <a class="headerlink" href="#getfsize"></a>
-            <div class="pdoc-code codehilite"><pre><span></span><span id="getfsize-46"><a href="#getfsize-46"><span class="linenos">46</span></a><span class="k">def</span><span class="w"> </span><span class="nf">getfsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">):</span>
-</span><span id="getfsize-47"><a href="#getfsize-47"><span class="linenos">47</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="getfsize-48"><a href="#getfsize-48"><span class="linenos">48</span></a><span class="sd">    获取目录、文件或URL指向的资源的总大小</span>
-</span><span id="getfsize-49"><a href="#getfsize-49"><span class="linenos">49</span></a>
-</span><span id="getfsize-50"><a href="#getfsize-50"><span class="linenos">50</span></a><span class="sd">    :param filepath: 目录路径、文件路径或URL</span>
-</span><span id="getfsize-51"><a href="#getfsize-51"><span class="linenos">51</span></a><span class="sd">    :param timeout: URL文件请求超时时间</span>
-</span><span id="getfsize-52"><a href="#getfsize-52"><span class="linenos">52</span></a><span class="sd">    :return: 转换后的大小和单位元组，如(6.66, &#39;MB&#39;)。失败时报错</span>
-</span><span id="getfsize-53"><a href="#getfsize-53"><span class="linenos">53</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="getfsize-54"><a href="#getfsize-54"><span class="linenos">54</span></a>    <span class="c1"># 先尝试作为本地路径处理</span>
-</span><span id="getfsize-55"><a href="#getfsize-55"><span class="linenos">55</span></a>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
-</span><span id="getfsize-56"><a href="#getfsize-56"><span class="linenos">56</span></a>        <span class="k">try</span><span class="p">:</span>
-</span><span id="getfsize-57"><a href="#getfsize-57"><span class="linenos">57</span></a>            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
-</span><span id="getfsize-58"><a href="#getfsize-58"><span class="linenos">58</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">__get_dir_size</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 目录大小</span>
-</span><span id="getfsize-59"><a href="#getfsize-59"><span class="linenos">59</span></a>            <span class="k">else</span><span class="p">:</span>
-</span><span id="getfsize-60"><a href="#getfsize-60"><span class="linenos">60</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 文件大小</span>
-</span><span id="getfsize-61"><a href="#getfsize-61"><span class="linenos">61</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
-</span><span id="getfsize-62"><a href="#getfsize-62"><span class="linenos">62</span></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-</span><span id="getfsize-63"><a href="#getfsize-63"><span class="linenos">63</span></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;本地路径处理错误: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span id="getfsize-64"><a href="#getfsize-64"><span class="linenos">64</span></a>
-</span><span id="getfsize-65"><a href="#getfsize-65"><span class="linenos">65</span></a>    <span class="c1"># 尝试作为URL处理</span>
-</span><span id="getfsize-66"><a href="#getfsize-66"><span class="linenos">66</span></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="getfsize-67"><a href="#getfsize-67"><span class="linenos">67</span></a>        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span>
-</span><span id="getfsize-68"><a href="#getfsize-68"><span class="linenos">68</span></a>            <span class="n">fsize</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">])</span>
-</span><span id="getfsize-69"><a href="#getfsize-69"><span class="linenos">69</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
-</span><span id="getfsize-70"><a href="#getfsize-70"><span class="linenos">70</span></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
-</span><span id="getfsize-71"><a href="#getfsize-71"><span class="linenos">71</span></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;URL处理错误: </span><span class="si">{</span><span class="n">err</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="getfsize-47"><a href="#getfsize-47"><span class="linenos">47</span></a><span class="k">def</span><span class="w"> </span><span class="nf">getfsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">):</span>
+</span><span id="getfsize-48"><a href="#getfsize-48"><span class="linenos">48</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="getfsize-49"><a href="#getfsize-49"><span class="linenos">49</span></a><span class="sd">    获取目录、文件或URL指向的资源的总大小</span>
+</span><span id="getfsize-50"><a href="#getfsize-50"><span class="linenos">50</span></a>
+</span><span id="getfsize-51"><a href="#getfsize-51"><span class="linenos">51</span></a><span class="sd">    :param filepath: 目录路径、文件路径或URL</span>
+</span><span id="getfsize-52"><a href="#getfsize-52"><span class="linenos">52</span></a><span class="sd">    :param timeout: URL文件请求超时时间</span>
+</span><span id="getfsize-53"><a href="#getfsize-53"><span class="linenos">53</span></a><span class="sd">    :return: 转换后的大小和单位元组，如(6.66, &#39;MB&#39;)。失败时报错</span>
+</span><span id="getfsize-54"><a href="#getfsize-54"><span class="linenos">54</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="getfsize-55"><a href="#getfsize-55"><span class="linenos">55</span></a>    <span class="c1"># 先尝试作为本地路径处理</span>
+</span><span id="getfsize-56"><a href="#getfsize-56"><span class="linenos">56</span></a>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+</span><span id="getfsize-57"><a href="#getfsize-57"><span class="linenos">57</span></a>        <span class="k">try</span><span class="p">:</span>
+</span><span id="getfsize-58"><a href="#getfsize-58"><span class="linenos">58</span></a>            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
+</span><span id="getfsize-59"><a href="#getfsize-59"><span class="linenos">59</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">__get_dir_size</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 目录大小</span>
+</span><span id="getfsize-60"><a href="#getfsize-60"><span class="linenos">60</span></a>            <span class="k">else</span><span class="p">:</span>
+</span><span id="getfsize-61"><a href="#getfsize-61"><span class="linenos">61</span></a>                <span class="n">fsize</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>  <span class="c1"># 文件大小</span>
+</span><span id="getfsize-62"><a href="#getfsize-62"><span class="linenos">62</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
+</span><span id="getfsize-63"><a href="#getfsize-63"><span class="linenos">63</span></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+</span><span id="getfsize-64"><a href="#getfsize-64"><span class="linenos">64</span></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;本地路径处理错误: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="getfsize-65"><a href="#getfsize-65"><span class="linenos">65</span></a>
+</span><span id="getfsize-66"><a href="#getfsize-66"><span class="linenos">66</span></a>    <span class="c1"># 尝试作为URL处理</span>
+</span><span id="getfsize-67"><a href="#getfsize-67"><span class="linenos">67</span></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="getfsize-68"><a href="#getfsize-68"><span class="linenos">68</span></a>        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span>
+</span><span id="getfsize-69"><a href="#getfsize-69"><span class="linenos">69</span></a>            <span class="n">fsize</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;Content-Length&quot;</span><span class="p">])</span>
+</span><span id="getfsize-70"><a href="#getfsize-70"><span class="linenos">70</span></a>            <span class="k">return</span> <span class="n">bitconv</span><span class="p">(</span><span class="n">fsize</span><span class="p">)</span>
+</span><span id="getfsize-71"><a href="#getfsize-71"><span class="linenos">71</span></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+</span><span id="getfsize-72"><a href="#getfsize-72"><span class="linenos">72</span></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;URL处理错误: </span><span class="si">{</span><span class="n">err</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span></pre></div>
 
 
@@ -322,34 +360,34 @@ hzgt<wbr>.core<wbr>.fileop    </h1>
 
     </div>
     <a class="headerlink" href="#ensure_file"></a>
-            <div class="pdoc-code codehilite"><pre><span></span><span id="ensure_file-74"><a href="#ensure_file-74"><span class="linenos"> 74</span></a><span class="k">def</span><span class="w"> </span><span class="nf">ensure_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="ensure_file-75"><a href="#ensure_file-75"><span class="linenos"> 75</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-</span><span id="ensure_file-76"><a href="#ensure_file-76"><span class="linenos"> 76</span></a><span class="sd">    确保文件及其目录存在。如果目录或文件不存在，则创建它们。</span>
-</span><span id="ensure_file-77"><a href="#ensure_file-77"><span class="linenos"> 77</span></a><span class="sd">    增强对Windows系统同名文件冲突的处理。</span>
-</span><span id="ensure_file-78"><a href="#ensure_file-78"><span class="linenos"> 78</span></a>
-</span><span id="ensure_file-79"><a href="#ensure_file-79"><span class="linenos"> 79</span></a><span class="sd">    :param file_path: 文件路径</span>
-</span><span id="ensure_file-80"><a href="#ensure_file-80"><span class="linenos"> 80</span></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="ensure_file-81"><a href="#ensure_file-81"><span class="linenos"> 81</span></a>    <span class="c1"># 标准化路径并获取目录路径</span>
-</span><span id="ensure_file-82"><a href="#ensure_file-82"><span class="linenos"> 82</span></a>    <span class="n">normalized_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
-</span><span id="ensure_file-83"><a href="#ensure_file-83"><span class="linenos"> 83</span></a>    <span class="n">dir_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">)</span>
-</span><span id="ensure_file-84"><a href="#ensure_file-84"><span class="linenos"> 84</span></a>
-</span><span id="ensure_file-85"><a href="#ensure_file-85"><span class="linenos"> 85</span></a>    <span class="c1"># 仅当目录路径非空时才处理目录创建</span>
-</span><span id="ensure_file-86"><a href="#ensure_file-86"><span class="linenos"> 86</span></a>    <span class="k">if</span> <span class="n">dir_path</span><span class="p">:</span>
-</span><span id="ensure_file-87"><a href="#ensure_file-87"><span class="linenos"> 87</span></a>        <span class="c1"># 检查路径是否已存在</span>
-</span><span id="ensure_file-88"><a href="#ensure_file-88"><span class="linenos"> 88</span></a>        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
-</span><span id="ensure_file-89"><a href="#ensure_file-89"><span class="linenos"> 89</span></a>            <span class="c1"># 如果路径存在但不是目录（即文件），则引发错误</span>
-</span><span id="ensure_file-90"><a href="#ensure_file-90"><span class="linenos"> 90</span></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
-</span><span id="ensure_file-91"><a href="#ensure_file-91"><span class="linenos"> 91</span></a>                <span class="k">raise</span> <span class="ne">FileExistsError</span><span class="p">(</span>
-</span><span id="ensure_file-92"><a href="#ensure_file-92"><span class="linenos"> 92</span></a>                    <span class="sa">f</span><span class="s2">&quot;创建目录失败 &#39;</span><span class="si">{</span><span class="n">dir_path</span><span class="si">}</span><span class="s2">&#39; 因为该路径已存在且不是目录&quot;</span>
-</span><span id="ensure_file-93"><a href="#ensure_file-93"><span class="linenos"> 93</span></a>                <span class="p">)</span>
-</span><span id="ensure_file-94"><a href="#ensure_file-94"><span class="linenos"> 94</span></a>            <span class="c1"># 如果是目录，则跳过创建（正常情况）</span>
-</span><span id="ensure_file-95"><a href="#ensure_file-95"><span class="linenos"> 95</span></a>        <span class="k">else</span><span class="p">:</span>
-</span><span id="ensure_file-96"><a href="#ensure_file-96"><span class="linenos"> 96</span></a>            <span class="c1"># 路径不存在，安全创建目录</span>
-</span><span id="ensure_file-97"><a href="#ensure_file-97"><span class="linenos"> 97</span></a>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">dir_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span id="ensure_file-98"><a href="#ensure_file-98"><span class="linenos"> 98</span></a>
-</span><span id="ensure_file-99"><a href="#ensure_file-99"><span class="linenos"> 99</span></a>    <span class="c1"># 安全创建文件（仅当文件不存在时）</span>
-</span><span id="ensure_file-100"><a href="#ensure_file-100"><span class="linenos">100</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">):</span>
-</span><span id="ensure_file-101"><a href="#ensure_file-101"><span class="linenos">101</span></a>        <span class="nb">open</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="ensure_file-75"><a href="#ensure_file-75"><span class="linenos"> 75</span></a><span class="k">def</span><span class="w"> </span><span class="nf">ensure_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="ensure_file-76"><a href="#ensure_file-76"><span class="linenos"> 76</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="ensure_file-77"><a href="#ensure_file-77"><span class="linenos"> 77</span></a><span class="sd">    确保文件及其目录存在。如果目录或文件不存在，则创建它们。</span>
+</span><span id="ensure_file-78"><a href="#ensure_file-78"><span class="linenos"> 78</span></a><span class="sd">    增强对Windows系统同名文件冲突的处理。</span>
+</span><span id="ensure_file-79"><a href="#ensure_file-79"><span class="linenos"> 79</span></a>
+</span><span id="ensure_file-80"><a href="#ensure_file-80"><span class="linenos"> 80</span></a><span class="sd">    :param file_path: 文件路径</span>
+</span><span id="ensure_file-81"><a href="#ensure_file-81"><span class="linenos"> 81</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="ensure_file-82"><a href="#ensure_file-82"><span class="linenos"> 82</span></a>    <span class="c1"># 标准化路径并获取目录路径</span>
+</span><span id="ensure_file-83"><a href="#ensure_file-83"><span class="linenos"> 83</span></a>    <span class="n">normalized_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+</span><span id="ensure_file-84"><a href="#ensure_file-84"><span class="linenos"> 84</span></a>    <span class="n">dir_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">)</span>
+</span><span id="ensure_file-85"><a href="#ensure_file-85"><span class="linenos"> 85</span></a>
+</span><span id="ensure_file-86"><a href="#ensure_file-86"><span class="linenos"> 86</span></a>    <span class="c1"># 仅当目录路径非空时才处理目录创建</span>
+</span><span id="ensure_file-87"><a href="#ensure_file-87"><span class="linenos"> 87</span></a>    <span class="k">if</span> <span class="n">dir_path</span><span class="p">:</span>
+</span><span id="ensure_file-88"><a href="#ensure_file-88"><span class="linenos"> 88</span></a>        <span class="c1"># 检查路径是否已存在</span>
+</span><span id="ensure_file-89"><a href="#ensure_file-89"><span class="linenos"> 89</span></a>        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
+</span><span id="ensure_file-90"><a href="#ensure_file-90"><span class="linenos"> 90</span></a>            <span class="c1"># 如果路径存在但不是目录（即文件），则引发错误</span>
+</span><span id="ensure_file-91"><a href="#ensure_file-91"><span class="linenos"> 91</span></a>            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dir_path</span><span class="p">):</span>
+</span><span id="ensure_file-92"><a href="#ensure_file-92"><span class="linenos"> 92</span></a>                <span class="k">raise</span> <span class="ne">FileExistsError</span><span class="p">(</span>
+</span><span id="ensure_file-93"><a href="#ensure_file-93"><span class="linenos"> 93</span></a>                    <span class="sa">f</span><span class="s2">&quot;创建目录失败 &#39;</span><span class="si">{</span><span class="n">dir_path</span><span class="si">}</span><span class="s2">&#39; 因为该路径已存在且不是目录&quot;</span>
+</span><span id="ensure_file-94"><a href="#ensure_file-94"><span class="linenos"> 94</span></a>                <span class="p">)</span>
+</span><span id="ensure_file-95"><a href="#ensure_file-95"><span class="linenos"> 95</span></a>            <span class="c1"># 如果是目录，则跳过创建（正常情况）</span>
+</span><span id="ensure_file-96"><a href="#ensure_file-96"><span class="linenos"> 96</span></a>        <span class="k">else</span><span class="p">:</span>
+</span><span id="ensure_file-97"><a href="#ensure_file-97"><span class="linenos"> 97</span></a>            <span class="c1"># 路径不存在，安全创建目录</span>
+</span><span id="ensure_file-98"><a href="#ensure_file-98"><span class="linenos"> 98</span></a>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">dir_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="ensure_file-99"><a href="#ensure_file-99"><span class="linenos"> 99</span></a>
+</span><span id="ensure_file-100"><a href="#ensure_file-100"><span class="linenos">100</span></a>    <span class="c1"># 安全创建文件（仅当文件不存在时）</span>
+</span><span id="ensure_file-101"><a href="#ensure_file-101"><span class="linenos">101</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">):</span>
+</span><span id="ensure_file-102"><a href="#ensure_file-102"><span class="linenos">102</span></a>        <span class="nb">open</span><span class="p">(</span><span class="n">normalized_path</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 </span></pre></div>
 
 
@@ -361,6 +399,71 @@ hzgt<wbr>.core<wbr>.fileop    </h1>
 <ul>
 <li><strong>file_path</strong>:  文件路径</li>
 </ul>
+</div>
+
+
+                </section>
+                <section id="make_filename">
+                            <input id="make_filename-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
+<div class="attr function">
+            
+        <span class="def">def</span>
+        <span class="name">make_filename</span><span class="signature pdoc-code condensed">(<span class="param"><span class="n">name</span><span class="p">:</span> <span class="nb">str</span>, </span><span class="param"><span class="n">fname</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>, </span><span class="param"><span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;<a href="log.html">hzgt.core.log</a>&#39;</span></span><span class="return-annotation">) -> <span class="nb">str</span>:</span></span>
+
+                <label class="view-source-button" for="make_filename-view-source"><span>View Source</span></label>
+
+    </div>
+    <a class="headerlink" href="#make_filename"></a>
+            <div class="pdoc-code codehilite"><pre><span></span><span id="make_filename-105"><a href="#make_filename-105"><span class="linenos">105</span></a><span class="k">def</span><span class="w"> </span><span class="nf">make_filename</span><span class="p">(</span>
+</span><span id="make_filename-106"><a href="#make_filename-106"><span class="linenos">106</span></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span><span id="make_filename-107"><a href="#make_filename-107"><span class="linenos">107</span></a>    <span class="n">fname</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="make_filename-108"><a href="#make_filename-108"><span class="linenos">108</span></a>    <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;.log&quot;</span>
+</span><span id="make_filename-109"><a href="#make_filename-109"><span class="linenos">109</span></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+</span><span id="make_filename-110"><a href="#make_filename-110"><span class="linenos">110</span></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+</span><span id="make_filename-111"><a href="#make_filename-111"><span class="linenos">111</span></a><span class="sd">    生成文件名（避免双重扩展，支持自定义后缀）</span>
+</span><span id="make_filename-112"><a href="#make_filename-112"><span class="linenos">112</span></a>
+</span><span id="make_filename-113"><a href="#make_filename-113"><span class="linenos">113</span></a><span class="sd">    :param name: 基础名称（当 fname 未提供时使用）</span>
+</span><span id="make_filename-114"><a href="#make_filename-114"><span class="linenos">114</span></a><span class="sd">    :param fname: 可选的自定义文件名</span>
+</span><span id="make_filename-115"><a href="#make_filename-115"><span class="linenos">115</span></a><span class="sd">    :param suffix: 期望的文件后缀（必须以点开头，默认为 .log）</span>
+</span><span id="make_filename-116"><a href="#make_filename-116"><span class="linenos">116</span></a><span class="sd">    :return: 正确的文件名（确保以指定的 suffix 结尾）</span>
+</span><span id="make_filename-117"><a href="#make_filename-117"><span class="linenos">117</span></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="make_filename-118"><a href="#make_filename-118"><span class="linenos">118</span></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">suffix</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">):</span>
+</span><span id="make_filename-119"><a href="#make_filename-119"><span class="linenos">119</span></a>        <span class="n">suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">suffix</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="make_filename-120"><a href="#make_filename-120"><span class="linenos">120</span></a>
+</span><span id="make_filename-121"><a href="#make_filename-121"><span class="linenos">121</span></a>    <span class="c1"># 优先使用 fname</span>
+</span><span id="make_filename-122"><a href="#make_filename-122"><span class="linenos">122</span></a>    <span class="k">if</span> <span class="n">fname</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="make_filename-123"><a href="#make_filename-123"><span class="linenos">123</span></a>        <span class="n">base</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">fname</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+</span><span id="make_filename-124"><a href="#make_filename-124"><span class="linenos">124</span></a>        <span class="k">if</span> <span class="n">ext</span> <span class="ow">and</span> <span class="n">fname</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
+</span><span id="make_filename-125"><a href="#make_filename-125"><span class="linenos">125</span></a>            <span class="k">return</span> <span class="n">fname</span>
+</span><span id="make_filename-126"><a href="#make_filename-126"><span class="linenos">126</span></a>        <span class="k">if</span> <span class="n">base</span><span class="p">:</span>  <span class="c1"># 有其它扩展名或无扩展名</span>
+</span><span id="make_filename-127"><a href="#make_filename-127"><span class="linenos">127</span></a>            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="make_filename-128"><a href="#make_filename-128"><span class="linenos">128</span></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fname</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="make_filename-129"><a href="#make_filename-129"><span class="linenos">129</span></a>
+</span><span id="make_filename-130"><a href="#make_filename-130"><span class="linenos">130</span></a>    <span class="c1"># 处理 name</span>
+</span><span id="make_filename-131"><a href="#make_filename-131"><span class="linenos">131</span></a>    <span class="n">base</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+</span><span id="make_filename-132"><a href="#make_filename-132"><span class="linenos">132</span></a>    <span class="k">if</span> <span class="n">ext</span> <span class="ow">and</span> <span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
+</span><span id="make_filename-133"><a href="#make_filename-133"><span class="linenos">133</span></a>        <span class="k">return</span> <span class="n">name</span>
+</span><span id="make_filename-134"><a href="#make_filename-134"><span class="linenos">134</span></a>    <span class="k">if</span> <span class="n">base</span><span class="p">:</span>
+</span><span id="make_filename-135"><a href="#make_filename-135"><span class="linenos">135</span></a>        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="make_filename-136"><a href="#make_filename-136"><span class="linenos">136</span></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+</span></pre></div>
+
+
+            <div class="docstring"><p>生成文件名（避免双重扩展，支持自定义后缀）</p>
+
+<h6 id="parameters">Parameters</h6>
+
+<ul>
+<li><strong>name</strong>:  基础名称（当 fname 未提供时使用）</li>
+<li><strong>fname</strong>:  可选的自定义文件名</li>
+<li><strong>suffix</strong>:  期望的文件后缀（必须以点开头，默认为 <a href="log.html">hzgt.core.log</a>）</li>
+</ul>
+
+<h6 id="returns">Returns</h6>
+
+<blockquote>
+  <p>正确的文件名（确保以指定的 suffix 结尾）</p>
+</blockquote>
 </div>
 
 

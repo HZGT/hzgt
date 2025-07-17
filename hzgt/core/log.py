@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional, Union
 
 from hzgt.core.Decorator import vargs
-from hzgt.core.fileop import ensure_file
+from hzgt.core.fileop import ensure_file, make_filename
 from hzgt.core.strop import restrop
 
 __LOG_LEVEL_DICT = {
@@ -80,6 +80,7 @@ __LEVEL_NAME_DICT = {
 def set_log(
         name: Optional[str] = None,
         fpath: Optional[str] = ".",
+        fname: Optional[str] = None,
         level: Union[int, str] = 2,
         print_prefix: str = f'{restrop("[%(asctime)s | %(filename)s[%(lineno)-3s]", f=3)} {restrop("[%(levelname)s]", f=5)}\t{restrop("%(message)s", f=1)}',
         file_prefix: str = '[%(asctime)s | %(filename)s[%(lineno)-3s] [%(levelname)s]\t%(message)s',
@@ -94,6 +95,7 @@ def set_log(
 
     :param name: 日志器名称，None 表示根日志器
     :param fpath: 日志文件存放目录路径 默认当前目录 如果为 None 则不输出日志文件
+    :param fname: 日志文件名 如果为 None 则为 "{name}.log"
     :param level: 日志级别，支持多种格式 (默认: INFO/2)
     :param print_prefix: 控制台日志格式
     :param file_prefix: 文件日志格式
@@ -130,7 +132,7 @@ def set_log(
     # 创建文件处理器（如果指定了日志文件路径）
     if fpath:
         # 确定日志文件名
-        log_name = f"{name if name else 'root'}.log"
+        log_name = make_filename(name, fname=fname, suffix=".log")
         logfile = os.path.join(fpath, log_name)
 
         # 确保日志文件存在

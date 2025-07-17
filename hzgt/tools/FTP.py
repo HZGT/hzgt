@@ -5,15 +5,14 @@ import logging
 import os
 import time
 
-from hzgt.core.fileop import getfsize, bitconv
-from hzgt.core.strop import restrop
-
-from tqdm import trange
-
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler, ThrottledDTPHandler
 from pyftpdlib.servers import FTPServer
-from pyftpdlib.log import LogFormatter
+from tqdm import trange
+
+from hzgt.core.fileop import getfsize, bitconv
+from hzgt.core.log import set_log
+from hzgt.core.strop import restrop
 
 
 class Ftpserver:
@@ -112,36 +111,37 @@ class Ftpserver:
         self.add_user(newdir, newusername, newpassword, newperm)
         return self.__authorizer.user_table
 
-    def set_log(self, logfilename: str = "ftps.log", level=logging.INFO, encoding="utf-8"):
+    @staticmethod
+    def set_log(logfilename: str = "ftps.log", level=2, encoding="utf-8"):
         """
         + level
-            * logging.CRITICAL
-            * logging.FATAL
-            * logging.ERROR
-            * logging.WARNING
-            * logging.WARN
-            * logging.INFO
-            * logging.DEBUG
-            * logging.NOTSET
+            - 0: "NOTSET"
+            - 1: "DEBUG"
+            - 2: "INFO"
+            - 3: "WARNING"
+            - 4: "ERROR"
+            - 5: "CRITICAL"
 
-        :param logfilename: FTP日志路径 默认 "ftp.log"
-        :param level: 日志级别 默认 logging.INFO
+        :param logfilename: FTP日志路径 默认 "ftps.log"
+        :param level: 日志级别 默认 2(INFO)
         :param encoding: 编码 默认 utf-8
         :return:
         """
         logfilename = logfilename if logfilename else "ftps.log"
 
-        logger = logging.getLogger()
-        logger.setLevel(level)
+        set_log('pyftpdlib', "logs", logfilename, level, encoding=encoding)
 
-        stream = logging.StreamHandler()
-        log_file = logging.FileHandler(filename=logfilename, encoding=encoding)
-
-        stream.setFormatter(LogFormatter())
-        log_file.setFormatter(LogFormatter())
-
-        logger.addHandler(stream)
-        logger.addHandler(log_file)
+        # logger = logging.getLogger('pyftpdlib')
+        # logger.setLevel(level)
+        #
+        # stream = logging.StreamHandler()
+        # log_file = logging.FileHandler(filename=logfilename, encoding=encoding)
+        #
+        # stream.setFormatter(LogFormatter())
+        # log_file.setFormatter(LogFormatter())
+        #
+        # logger.addHandler(stream)
+        # logger.addHandler(log_file)
 
     def start(self, host_res: str = "127.0.0.1", port: int = 2121,
               passive_port_range: None = range(6000, 7000), read_limit: int = 300, write_limit: int = 300,
