@@ -8,11 +8,10 @@ from .core import *
 
 __all__ = [
     "version",
-] + [
     "pic", "restrop",
-    "bitconv", "getfsize", "ensure_file",
+    "bitconv", "getfsize", "ensure_file", "make_filename",
     "gettime", "vargs",
-    "set_log",
+    "set_log", "bind_logger",
     "getip", "validate_ip",
     "AutoConfig",
     "is_admin", "require_admin", "execute_command", "run_as_admin", "check_admin_and_prompt",

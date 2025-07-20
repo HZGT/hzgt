@@ -2,7 +2,7 @@
 import re
 import time
 from contextlib import contextmanager
-from enum import Enum
+from datetime import datetime
 from logging import Logger
 from typing import Dict, Optional, Any, List, Tuple, Union, Generator, Callable
 
@@ -11,7 +11,9 @@ from pymysql.connections import Connection
 from pymysql.cursors import DictCursor, SSCursor
 
 from hzgt.core.log import set_log
+from .sqlcore import SQLExecutionStatus, JoinType
 from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
+from .sqlhistory import SQLHistoryRecord, SQLHistory
 
 # 有效的MySQL数据类型
 VALID_MYSQL_DATA_TYPES = ['TINYINT', 'SMALLINT', 'INT', 'INTEGER', 'BIGINT', 'FLOAT', 'DOUBLE', 'DECIMAL', 'DATE',
@@ -114,14 +116,6 @@ AVAILABLE_OPERATORS = {
     # 额外操作符
     '$regex': 'REGEXP', '$not': 'NOT', '$or': 'OR', '$and': 'AND'
 }
-
-
-class JoinType(Enum):
-    """连接类型枚举"""
-    INNER = "INNER JOIN"
-    LEFT = "LEFT JOIN"
-    RIGHT = "RIGHT JOIN"
-    FULL = "FULL JOIN"
 
 
 class MySQLAdapter(DBAdapter):
@@ -799,11 +793,12 @@ class MySQLConnectionPool(ConnectionPool):
 
 
 class Mysqlop(SQLutilop):
-    """MySQL操作工具，基于抽象框架实现"""
+    """MySQL操作工具"""
 
     def __init__(self, host: str, port: int, user: str, passwd: str, database: str = None, charset: str = "utf8",
                  logger: Logger = None, autoreconnect: bool = True, reconnect_retries: int = 3,
-                 pool_size: int = 5):
+                 pool_size: int = 5, enable_history: bool = True, history_max_records: int = 100,
+                 history_auto_save: bool = False, history_save_path: Optional[str] = None):
         """
         初始化MySQL操作工具
 
@@ -818,6 +813,10 @@ class Mysqlop(SQLutilop):
             autoreconnect: 是否自动重连 默认 True
             reconnect_retries: 重连次数
             pool_size: 连接池大小
+            enable_history: 是否启用SQL历史记录功能
+            history_max_records: 历史记录最大数量
+            history_auto_save: 是否自动保存历史记录到文件
+            history_save_path: 历史记录保存路径
         """
         # 日志配置
         super().__init__(logger)
@@ -833,7 +832,21 @@ class Mysqlop(SQLutilop):
         self.__connection = None
         self.__in_transaction = False
 
+        # 初始化SQL历史记录功能
+        self.enable_history = enable_history
+        if self.enable_history:
+            self.__history = SQLHistory(
+                max_records=history_max_records,
+                auto_save=history_auto_save,
+                save_path=history_save_path,
+                logger=self.logger
+            )
+        else:
+            self.__history = None
+
         self.logger.info(f'MySQL工具初始化完成 host: {host}, port: {port}, user: {user}, database: {database}')
+        if self.enable_history:
+            self.logger.info(f'SQL历史记录功能已启用，最大记录数: {history_max_records}')
 
     def _create_default_logger(self) -> Logger:
         """
@@ -843,6 +856,312 @@ class Mysqlop(SQLutilop):
             Logger: 日志记录器实例
         """
         return set_log("hzgt.mysql", "logs")
+
+    def _record_sql_history(self, sql: str, params: Optional[Any] = None,
+                            duration: float = 0.0, status: SQLExecutionStatus = SQLExecutionStatus.SUCCESS,
+                            affected_rows: Optional[int] = None, result_count: Optional[int] = None,
+                            error_message: Optional[str] = None, user_tag: Optional[str] = None) -> Optional[
+            SQLHistoryRecord]:
+        """
+        记录SQL历史
+
+        Args:
+            sql: SQL语句
+            params: 参数
+            duration: 执行耗时
+            status: 执行状态
+            affected_rows: 影响行数
+            result_count: 结果行数
+            error_message: 错误信息
+            user_tag: 用户标签
+
+        Returns:
+            历史记录对象，如果未启用历史记录则返回None
+        """
+        if not self.enable_history or not self.__history:
+            return None
+
+        return self.__history.add_record(
+            sql=sql,
+            params=params,
+            duration=duration,
+            status=status,
+            affected_rows=affected_rows,
+            result_count=result_count,
+            error_message=error_message,
+            database=self.__selected_db,
+            table=self.__selected_table,
+            user_tag=user_tag
+        )
+
+    # ------------------ 内部核心SQL执行方法 ------------------
+    def _execute_sql(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
+                     user_tag: Optional[str] = None, return_last_id: bool = False) -> Any:
+        """
+        内部核心SQL执行方法，包含历史记录逻辑
+
+        Args:
+            sql: SQL语句
+            args: 参数
+            user_tag: 用户标签，用于标记历史记录
+            return_last_id: 是否返回最后插入的ID
+
+        Returns:
+            执行结果或最后插入的ID
+        """
+        start_time = time.time()
+        status = SQLExecutionStatus.SUCCESS
+        last_id = None
+
+        for attempt in range(2):  # 最多重试1次
+            try:
+                self._ensure_connection()
+                cursor = self.__connection.cursor()
+                try:
+                    affected_rows = cursor.execute(sql, args)
+                    if not self.__in_transaction and sql.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+                        self.__connection.commit()
+
+                    result = cursor.fetchall()
+
+                    # 获取最后插入的ID
+                    if return_last_id:
+                        last_id = cursor.lastrowid
+
+                    # 记录成功的SQL历史
+                    duration = time.time() - start_time
+                    self._record_sql_history(
+                        sql=sql,
+                        params=args,
+                        duration=duration,
+                        status=status,
+                        affected_rows=affected_rows,
+                        result_count=len(result) if result else None,
+                        user_tag=user_tag
+                    )
+
+                    return last_id if return_last_id else result
+                finally:
+                    cursor.close()
+            except pymysql.OperationalError as e:
+                if attempt == 0 and self.autoreconnect:
+                    self.logger.warning(f"执行SQL失败, 尝试重新连接: {e}")
+                    self.connect()
+                    continue
+                if not self.__in_transaction:
+                    self.__connection.rollback()
+                self.logger.error(f"执行SQL失败: {sql} | 参数: {args}")
+
+                # 记录失败的SQL历史
+                status = SQLExecutionStatus.ERROR
+                error_message = str(e)
+                duration = time.time() - start_time
+                self._record_sql_history(
+                    sql=sql,
+                    params=args,
+                    duration=duration,
+                    status=status,
+                    error_message=error_message,
+                    user_tag=user_tag
+                )
+
+                raise RuntimeError(e) from None
+            except Exception as e:
+                if not self.__in_transaction:
+                    self.__connection.rollback()
+                self.logger.error(f"执行SQL时发生错误: {e}")
+
+                # 记录失败的SQL历史
+                status = SQLExecutionStatus.ERROR
+                error_message = str(e)
+                duration = time.time() - start_time
+                self._record_sql_history(
+                    sql=sql,
+                    params=args,
+                    duration=duration,
+                    status=status,
+                    error_message=error_message,
+                    user_tag=user_tag
+                )
+
+                raise RuntimeError(e) from None
+
+    def _query_sql(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
+                   bool_dict: bool = False, size: Optional[int] = None,
+                   user_tag: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        内部核心查询方法，包含历史记录逻辑
+
+        Args:
+            sql: SQL查询语句
+            args: 查询参数
+            bool_dict: 返回格式为 True 字典Dict[str, Any] False 列表List[Dict[str, Any]]
+            size: 批量获取大小，若不指定则一次性获取全部结果
+            user_tag: 用户标签，用于标记历史记录
+
+        Returns:
+            查询结果列表，每项为一个字典
+        """
+        start_time = time.time()
+        status = SQLExecutionStatus.SUCCESS
+
+        self._ensure_connection()
+        cursor = None
+        try:
+            cursor = self.__connection.cursor(DictCursor)
+            cursor.execute(sql, args)
+
+            if size is None:
+                # 原有行为，一次获取所有结果
+                result = list(cursor.fetchall())
+            else:
+                # 分批获取
+                result = []
+                while True:
+                    batch = cursor.fetchmany(size)
+                    if not batch:
+                        break
+                    result.extend(batch)
+
+            result_count = len(result)
+
+            # 记录成功的SQL历史
+            duration = time.time() - start_time
+            self._record_sql_history(
+                sql=sql,
+                params=args,
+                duration=duration,
+                status=status,
+                result_count=result_count,
+                user_tag=user_tag
+            )
+
+            if bool_dict and result:
+                return {key: [item[key] for item in result] for key in result[0]}
+            return result
+        except Exception as e:
+            self.logger.error(f"执行查询失败: {sql} | {e}")
+
+            # 记录失败的SQL历史
+            status = SQLExecutionStatus.ERROR
+            error_message = str(e)
+            duration = time.time() - start_time
+            self._record_sql_history(
+                sql=sql,
+                params=args,
+                duration=duration,
+                status=status,
+                error_message=error_message,
+                user_tag=user_tag
+            )
+
+            raise RuntimeError(e) from None
+        finally:
+            if cursor:
+                cursor.close()
+                
+    def _query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
+                  user_tag: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        查询单条记录
+
+        Args:
+            sql: SQL查询语句
+            args: 查询参数
+            user_tag: 用户标签，用于标记历史记录
+
+        Returns:
+            单条记录字典，未找到时返回None
+        """
+        results = self._query_sql(sql, args, user_tag=user_tag)
+        return results[0] if results else None
+
+    def _executemany_sql(self, sql: str, args_list: List[Union[tuple, dict]],
+                         user_tag: Optional[str] = None) -> Any:
+        """
+        内部核心批量执行方法，包含历史记录逻辑
+
+        Args:
+            sql: SQL语句
+            args_list: 参数列表
+            user_tag: 用户标签，用于标记历史记录
+
+        Returns:
+            影响的行数
+        """
+        if not args_list:
+            return None
+
+        start_time = time.time()
+        status = SQLExecutionStatus.SUCCESS
+
+        for attempt in range(2):  # 最多重试1次
+            try:
+                self._ensure_connection()
+                cursor = self.__connection.cursor()
+                try:
+                    affected_rows = cursor.executemany(sql, args_list)
+                    if not self.__in_transaction:
+                        self.__connection.commit()
+
+                    # 记录成功的SQL历史
+                    duration = time.time() - start_time
+                    self._record_sql_history(
+                        sql=sql,
+                        params=f"批量执行 {len(args_list)} 条记录",
+                        duration=duration,
+                        status=status,
+                        affected_rows=affected_rows,
+                        user_tag=user_tag
+                    )
+
+                    return affected_rows
+                finally:
+                    cursor.close()
+            except pymysql.OperationalError as e:
+                if attempt == 0 and self.autoreconnect:
+                    self.logger.warning(f"执行批量SQL失败, 尝试重新连接: {e}")
+                    self.connect()
+                    continue
+                if not self.__in_transaction:
+                    self.__connection.rollback()
+                self.logger.error(f"执行批量SQL失败: {sql}")
+
+                # 记录失败的SQL历史
+                status = SQLExecutionStatus.ERROR
+                error_message = str(e)
+                duration = time.time() - start_time
+                self._record_sql_history(
+                    sql=sql,
+                    params=f"批量执行 {len(args_list)} 条记录",
+                    duration=duration,
+                    status=status,
+                    error_message=error_message,
+                    user_tag=user_tag
+                )
+
+                raise RuntimeError(e) from None
+            except Exception as e:
+                if not self.__in_transaction:
+                    self.__connection.rollback()
+                self.logger.error(f"执行批量SQL时发生错误: {e}")
+
+                # 记录失败的SQL历史
+                status = SQLExecutionStatus.ERROR
+                error_message = str(e)
+                duration = time.time() - start_time
+                self._record_sql_history(
+                    sql=sql,
+                    params=f"批量执行 {len(args_list)} 条记录",
+                    duration=duration,
+                    status=status,
+                    error_message=error_message,
+                    user_tag=user_tag
+                )
+
+                raise RuntimeError(e) from None
+
+    # ------------------ 连接管理方法 ------------------
 
     def __enter__(self):
         """上下文管理器入口"""
@@ -949,120 +1268,13 @@ class Mysqlop(SQLutilop):
             self._end_transaction(commit=False)
             raise RuntimeError(e) from None
 
-    def execute(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Any:
-        """
-        执行SQL语句
+    # ------------------ 流式查询方法 ------------------
 
-        Args:
-            sql: SQL语句
-            args: 参数
-
-        Returns:
-            执行结果
-        """
-        for attempt in range(2):  # 最多重试1次
-            try:
-                self._ensure_connection()
-                cursor = self.__connection.cursor()
-                try:
-                    cursor.execute(sql, args)
-                    if not self.__in_transaction and sql.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
-                        self.__connection.commit()
-                    return cursor.fetchall()
-                finally:
-                    cursor.close()
-            except pymysql.OperationalError as e:
-                if attempt == 0 and self.autoreconnect:
-                    self.logger.warning(f"执行SQL失败, 尝试重新连接: {e}")
-                    self.connect()
-                    continue
-                if not self.__in_transaction:
-                    self.__connection.rollback()
-                self.logger.error(f"执行SQL失败: {sql} | 参数: {args}")
-                raise RuntimeError(e) from None
-            except Exception as e:
-                if not self.__in_transaction:
-                    self.__connection.rollback()
-                self.logger.error(f"执行SQL时发生错误: {e}")
-                raise RuntimeError(e) from None
-
-    def executemany(self, sql: str, args_list: List[Union[tuple, dict]]) -> Any:
-        """批量执行SQL语句"""
-        if not args_list:
-            return None
-
-        for attempt in range(2):  # 最多重试1次
-            try:
-                self._ensure_connection()
-                cursor = self.__connection.cursor()
-                try:
-                    result = cursor.executemany(sql, args_list)
-                    if not self.__in_transaction:
-                        self.__connection.commit()
-                    return result
-                finally:
-                    cursor.close()
-            except pymysql.OperationalError as e:
-                if attempt == 0 and self.autoreconnect:
-                    self.logger.warning(f"执行批量SQL失败, 尝试重新连接: {e}")
-                    self.connect()
-                    continue
-                if not self.__in_transaction:
-                    self.__connection.rollback()
-                self.logger.error(f"执行批量SQL失败: {sql}")
-                raise RuntimeError(e) from None
-            except Exception as e:
-                if not self.__in_transaction:
-                    self.__connection.rollback()
-                self.logger.error(f"执行批量SQL时发生错误: {e}")
-                raise RuntimeError(e) from None
-
-    def query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
-              bool_dict: bool = False, size: Optional[int] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
-        """
-        执行查询并返回结果集
-
-        Args:
-            sql: SQL查询语句
-            args: 查询参数
-            bool_dict: 返回格式为 True 字典Dict[str, Any] False 列表List[Dict[str, Any]]
-            size: 批量获取大小，若不指定则一次性获取全部结果
-
-        Returns:
-            查询结果列表，每项为一个字典
-        """
-        self._ensure_connection()
-        cursor = None
-        try:
-            cursor = self.__connection.cursor(DictCursor)
-            cursor.execute(sql, args)
-
-            if size is None:
-                # 原有行为，一次获取所有结果
-                result = list(cursor.fetchall())
-            else:
-                # 分批获取
-                result = []
-                while True:
-                    batch = cursor.fetchmany(size)
-                    if not batch:
-                        break
-                    result.extend(batch)
-
-            if bool_dict and result:
-                return {key: [item[key] for item in result] for key in result[0]}
-            return result
-        except Exception as e:
-            self.logger.error(f"执行查询失败: {sql} | {e}")
-            raise RuntimeError(e) from None
-        finally:
-            if cursor:
-                cursor.close()
-
-    def stream_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
+    def _stream_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
                      size: int = 5000, bool_dict: bool = False,
-                     use_server_side_cursor: bool = True) -> Generator[
-            Union[Dict[str, Any], Dict[str, List]], None, None]:
+                     use_server_side_cursor: bool = True,
+                     user_tag: Optional[str] = None) -> Generator[
+        Union[Dict[str, Any], Dict[str, List]], None, None]:
         """
         流式执行查询，以迭代器方式返回结果，适合大数据量查询
 
@@ -1072,11 +1284,17 @@ class Mysqlop(SQLutilop):
             size: 每次获取的批量大小
             bool_dict: 是否以字典形式返回结果 {列名: [列值列表]}
             use_server_side_cursor: 是否使用服务器端游标，可减少内存占用
+            user_tag: 用户标签，用于标记历史记录
 
         Yields:
             如果bool_dict为False: 每条查询结果记录
             如果bool_dict为True: 批量记录的字典表示 {列名: [批次中该列的所有值]}
         """
+        start_time = time.time()
+        total_rows = 0
+        error_message = None
+        status = SQLExecutionStatus.SUCCESS
+
         self._ensure_connection()
         cursor = None
         try:
@@ -1090,10 +1308,10 @@ class Mysqlop(SQLutilop):
             else:
                 cursor = self.__connection.cursor(DictCursor)
 
-            start_time = time.time()
+            query_start_time = time.time()
             self.logger.debug(f"执行查询: {sql}")
             cursor.execute(sql, args)
-            query_time = time.time() - start_time
+            query_time = time.time() - query_start_time
             self.logger.debug(f"SQL执行时间: {query_time:.2f}秒")
 
             # 针对bool_dict模式的优化
@@ -1108,6 +1326,7 @@ class Mysqlop(SQLutilop):
                     if not batch:
                         break
 
+                    total_rows += len(batch)
                     self.logger.debug(f"获取{len(batch)}行数据用时: {fetch_time:.2f}秒")
 
                     if not field_names and batch:
@@ -1140,6 +1359,7 @@ class Mysqlop(SQLutilop):
             else:
                 # 普通模式逐行返回
                 for row in cursor:
+                    total_rows += 1
                     if isinstance(row, dict):
                         yield row
                     else:
@@ -1147,175 +1367,37 @@ class Mysqlop(SQLutilop):
                         field_names = [desc[0] for desc in cursor.description]
                         yield {field_names[i]: value for i, value in enumerate(row)}
 
+            # 记录成功的SQL历史
+            duration = time.time() - start_time
+            self._record_sql_history(
+                sql=sql,
+                params=args,
+                duration=duration,
+                status=status,
+                result_count=total_rows,
+                user_tag=user_tag
+            )
+
         except Exception as e:
             self.logger.error(f"流式查询失败: {sql} | {e}")
+
+            # 记录失败的SQL历史
+            status = SQLExecutionStatus.ERROR
+            error_message = str(e)
+            duration = time.time() - start_time
+            self._record_sql_history(
+                sql=sql,
+                params=args,
+                duration=duration,
+                status=status,
+                error_message=error_message,
+                user_tag=user_tag
+            )
+
             raise RuntimeError(f"流式查询失败: {e}") from None
         finally:
             if cursor:
                 cursor.close()
-
-    def paginate(self, tablename: str = "", conditions: Dict = None,
-                 fields: List[str] = None, order: Dict[str, bool] = None,
-                 page: int = 1, page_size: int = 100) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        分页查询
-
-        Args:
-            tablename: 表名，默认为当前选择的表
-            conditions: 查询条件
-            fields: 要查询的字段列表
-            order: 排序 {列名: 是否升序}
-            page: 页码，从1开始
-            page_size: 每页记录数
-
-        Returns:
-            (当前页数据, 总记录数)
-        """
-        tablename = tablename or self.__selected_table
-        if not tablename:
-            raise ValueError("未指定表名")
-
-        # 计算总记录数
-        count_sql, count_params = self.query_builder.build_select(
-            tablename=tablename,
-            fields=["COUNT(*) as total"],
-            conditions=conditions
-        )
-        total_result = self.query_one(count_sql, count_params)
-        total = total_result["total"] if total_result else 0
-
-        # 空结果快速返回
-        if total == 0:
-            return [], 0
-
-        # 查询分页数据
-        offset = (page - 1) * page_size
-        data = self.select(
-            tablename=tablename,
-            conditions=conditions,
-            fields=fields,
-            order=order,
-            limit=page_size,
-            offset=offset
-        )
-
-        return data, total
-
-    def analyze_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Dict[str, Any]:
-        """
-        分析查询执行计划并提供优化建议
-
-        Args:
-            sql: SQL查询语句
-            args: 查询参数
-
-        Returns:
-            分析报告
-        """
-        self._ensure_connection()
-
-        # 获取执行计划
-        explain_sql = f"EXPLAIN {sql}"
-        explain_result = self.query(explain_sql, args)
-
-        # 分析执行计划
-        analysis = {
-            "execution_plan": explain_result,
-            "recommendations": []
-        }
-
-        # 检查是否使用索引
-        for row in explain_result:
-            if row.get("key") is None and row.get("type") not in ["system", "const"]:
-                table = row.get("table", "")
-                analysis["recommendations"].append(f"表'{table}'未使用索引，考虑为查询条件添加索引")
-
-            if row.get("rows", 0) > 10000:
-                analysis["recommendations"].append(f"扫描行数较多({row.get('rows')}行)，考虑优化查询或添加索引")
-
-        return analysis
-
-    def shard_query(self, tablename: str, id_field: str,
-                    conditions: Dict = None, fields: List[str] = None,
-                    shard_size: int = 10000, process_func: Callable = None):
-        """
-        分片查询大表，自动按主键或指定字段进行分片查询
-
-        Args:
-            tablename: 表名
-            id_field: 用于分片的ID字段（应该有索引）
-            conditions: 查询条件
-            fields: 要查询的字段列表
-            shard_size: 每个分片大小
-            process_func: 处理每个分片数据的函数
-
-        Returns:
-            处理结果列表，如果没有process_func则返回所有数据
-        """
-        tablename = tablename or self.__selected_table
-        if not tablename:
-            raise ValueError("未指定表名")
-
-        # 获取最小和最大ID
-        min_max_sql, min_max_params = self.query_builder.build_select(
-            tablename=tablename,
-            fields=[f"MIN({id_field}) as min_id", f"MAX({id_field}) as max_id"],
-            conditions=conditions
-        )
-
-        result = self.query_one(min_max_sql, min_max_params)
-        if not result or result['min_id'] is None:
-            return []
-
-        min_id, max_id = result['min_id'], result['max_id']
-
-        # 分片处理
-        results = []
-        for start_id in range(min_id, max_id + 1, shard_size):
-            end_id = min(start_id + shard_size - 1, max_id)
-
-            # 构建分片条件
-            shard_conditions = conditions.copy() if conditions else {}
-            shard_conditions[id_field] = {"$between": [start_id, end_id]}
-
-            # 查询分片
-            shard_sql, shard_params = self.query_builder.build_select(
-                tablename=tablename,
-                fields=fields,
-                conditions=shard_conditions,
-                order={id_field: True}
-            )
-
-            self.logger.debug(f"查询ID范围 {start_id} 到 {end_id}")
-            shard_data = self.query(shard_sql, shard_params)
-
-            # 处理分片数据
-            if process_func:
-                shard_result = process_func(shard_data)
-                if shard_result:
-                    results.append(shard_result)
-            else:
-                results.extend(shard_data)
-
-            # 记录进度
-            progress = (end_id - min_id) / (max_id - min_id) * 100 if max_id > min_id else 100
-            self.logger.info(f"分片查询进度: {progress:.1f}%")
-
-        return results
-
-    def query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Optional[Dict[str, Any]]:
-        """
-        查询单条记录
-
-        Args:
-            sql: SQL查询语句
-            args: 查询参数
-
-        Returns:
-            单条记录字典，未找到时返回None
-        """
-        results = self.query(sql, args)
-        return results[0] if results else None
 
     # ------------------ 业务方法 ------------------
 
@@ -1353,7 +1435,7 @@ class Mysqlop(SQLutilop):
         Returns:
             当前用户信息
         """
-        return self.query("SELECT USER()")
+        return self._query_sql("SELECT USER()", user_tag="获取当前用户")
 
     def get_version(self) -> List[Dict[str, Any]]:
         """
@@ -1363,7 +1445,7 @@ class Mysqlop(SQLutilop):
             数据库版本信息
         """
         self.logger.debug(f"获取数据库版本")
-        return self.query("SELECT VERSION()")
+        return self._query_sql("SELECT VERSION()", user_tag="获取数据库版本")
 
     def get_all_db(self) -> List[str]:
         """
@@ -1373,7 +1455,7 @@ class Mysqlop(SQLutilop):
             所有数据库名列表
         """
         self.logger.debug(f"获取数据库名")
-        result = self.query("SHOW DATABASES")
+        result = self._query_sql("SHOW DATABASES", user_tag="获取所有数据库")
         return [row["Database"] for row in result]
 
     def get_all_nonsys_db(self) -> List[str]:
@@ -1405,7 +1487,7 @@ class Mysqlop(SQLutilop):
 
         safe_db = self._escape_identifier(dbname)
         self.logger.debug(f"获取数据库[{dbname}]的所有表")
-        result = self.query(f"SHOW TABLES FROM {safe_db}")
+        result = self._query_sql(f"SHOW TABLES FROM {safe_db}", user_tag=f"获取数据库{dbname}的表")
         table_column = f"Tables_in_{dbname}"
         return [row[table_column] for row in result]
 
@@ -1439,7 +1521,8 @@ class Mysqlop(SQLutilop):
         if not tablename:
             raise ValueError("未指定表名")
 
-        result = self.query(f"DESCRIBE {self._escape_identifier(tablename)}")
+        result = self._query_sql(f"DESCRIBE {self._escape_identifier(tablename)}",
+                                 user_tag=f"获取表{tablename}的列信息")
         return [row["Field"] for row in result]
 
     def get_table_index(self, tablename: str = '') -> List[Dict[str, Any]]:
@@ -1457,7 +1540,8 @@ class Mysqlop(SQLutilop):
             raise ValueError("未指定表名")
 
         self.logger.debug(f"获取表[{tablename}]的索引信息")
-        return self.query(f"SHOW INDEX FROM {self._escape_identifier(tablename)}")
+        return self._query_sql(f"SHOW INDEX FROM {self._escape_identifier(tablename)}",
+                               user_tag=f"获取表{tablename}的索引信息")
 
     def create_db(self, dbname: str, bool_autoselect: bool = True):
         """
@@ -1472,7 +1556,8 @@ class Mysqlop(SQLutilop):
             self.logger.error(f"数据库名[{dbname}]不合法, 请使用以下符号: 字母、数字、下划线、美元符号、井号、@")
             raise ValueError(f'数据库名[{dbname}]不合法, 请使用以下符号: 字母、数字、下划线、美元符号、井号、@')
 
-        self.execute(f"CREATE DATABASE IF NOT EXISTS `{dbname}` CHARACTER SET utf8 COLLATE utf8_general_ci")
+        self._execute_sql(f"CREATE DATABASE IF NOT EXISTS `{dbname}` CHARACTER SET utf8 COLLATE utf8_general_ci",
+                          user_tag=f"创建数据库{dbname}")
         self.logger.info(f"MySQL数据库[{dbname}]创建成功")
         if bool_autoselect:
             self.select_db(dbname)
@@ -1485,7 +1570,7 @@ class Mysqlop(SQLutilop):
             dbname: 需要删除的数据库名
         """
         safe_db = self._escape_identifier(dbname)
-        self.execute(f"DROP DATABASE IF EXISTS {safe_db}")
+        self._execute_sql(f"DROP DATABASE IF EXISTS {safe_db}", user_tag=f"删除数据库{dbname}")
         self.logger.info(f"MySQL数据库[{dbname}]删除成功")
         if dbname == self.__selected_db:
             self.__selected_db = None
@@ -1559,7 +1644,7 @@ class Mysqlop(SQLutilop):
         )
 
         # 执行SQL
-        self.execute(sql)
+        self._execute_sql(sql, user_tag=f"创建表{tablename}")
         self.logger.info(f"创建表 {tablename} 成功")
         if bool_autoselect:
             self.select_table(tablename)
@@ -1577,7 +1662,7 @@ class Mysqlop(SQLutilop):
             raise ValueError("未指定表名")
 
         sql = self.query_builder.build_drop_table(tablename, if_exists)
-        self.execute(sql)
+        self._execute_sql(sql, user_tag=f"删除表{tablename}")
         self.logger.info(f"删除表 {tablename} 成功")
         if tablename == self.__selected_table:
             self.__selected_table = None
@@ -1614,36 +1699,16 @@ class Mysqlop(SQLutilop):
         )
 
         # 执行SQL
-        self._ensure_connection()
-        cursor = None
-        try:
-            cursor = self.__connection.cursor()
-            cursor.execute(sql, params)
-            if not self.__in_transaction:
-                self.__connection.commit()
-            self.logger.info(f"成功插入数据到表 {tablename}")
-
-            # 返回插入ID
-            if return_id:
-                last_id = cursor.lastrowid
-                return last_id
-        except Exception as e:
-            if not self.__in_transaction:
-                self.__connection.rollback()
-            self.logger.error(f"插入数据失败: {e}")
-            raise RuntimeError(e) from None
-        finally:
-            if cursor:
-                cursor.close()
-
-        return None
+        result = self._execute_sql(sql, params, user_tag=f"插入数据到表{tablename}", return_last_id=return_id)
+        self.logger.info(f"成功插入数据到表 {tablename}")
+        return result if return_id else None
 
     def select(self, tablename: str = "", conditions: Dict = None,
                order: Dict[str, bool] = None, fields: List[str] = None,
                limit: int = None, offset: int = None, bool_dict: bool = False,
                stream: bool = False, size: int = 5000,
                use_index_hint: bool = False, use_server_side_cursor: bool = True, **kwargs) -> Union[
-            list[dict[str, Any]], dict[str, Any], Generator[dict[str, Any], None, None]]:
+        list[dict[str, Any]], dict[str, Any], Generator[dict[str, Any], None, None]]:
         """
         查询数据
 
@@ -1706,16 +1771,17 @@ class Mysqlop(SQLutilop):
 
         # 流式查询
         if stream:
-            return self.stream_query(
+            return self._stream_query(
                 sql=sql,
                 args=params,
                 size=size,
                 bool_dict=bool_dict,
-                use_server_side_cursor=use_server_side_cursor
+                use_server_side_cursor=use_server_side_cursor,
+                user_tag=f"流式查询表{tablename}"
             )
 
         # 普通查询
-        return self.query(sql, params, bool_dict=bool_dict)
+        return self._query_sql(sql, params, bool_dict=bool_dict, user_tag=f"查询表{tablename}")
 
     def update(self, tablename: str = '', update_values: Dict[str, Any] = None,
                conditions: Dict = None, **kwargs):
@@ -1747,23 +1813,9 @@ class Mysqlop(SQLutilop):
         )
 
         # 执行更新
-        self._ensure_connection()
-        cursor = None
-        try:
-            cursor = self.__connection.cursor()
-            cursor.execute(sql, params)
-            if not self.__in_transaction:
-                self.__connection.commit()
-            self.logger.info(f"更新表 {tablename} 成功，受影响行数: {cursor.rowcount}")
-            return cursor.rowcount
-        except Exception as e:
-            if not self.__in_transaction:
-                self.__connection.rollback()
-            self.logger.error(f"更新数据失败: {e}")
-            raise RuntimeError(e) from None
-        finally:
-            if cursor:
-                cursor.close()
+        self._execute_sql(sql, params, user_tag=f"更新表{tablename}")
+        self.logger.info(f"更新表 {tablename} 成功")
+        return True  # 简化返回值
 
     def delete(self, tablename: str = '', conditions: Dict = None, **kwargs):
         """
@@ -1793,23 +1845,9 @@ class Mysqlop(SQLutilop):
         )
 
         # 执行删除
-        self._ensure_connection()
-        cursor = None
-        try:
-            cursor = self.__connection.cursor()
-            cursor.execute(sql, params)
-            if not self.__in_transaction:
-                self.__connection.commit()
-            self.logger.info(f"从表 {tablename} 删除数据成功，受影响行数: {cursor.rowcount}")
-            return cursor.rowcount
-        except Exception as e:
-            if not self.__in_transaction:
-                self.__connection.rollback()
-            self.logger.error(f"删除数据失败: {e}")
-            raise RuntimeError(e) from None
-        finally:
-            if cursor:
-                cursor.close()
+        self._execute_sql(sql, params, user_tag=f"删除表{tablename}数据")
+        self.logger.info(f"从表 {tablename} 删除数据成功")
+        return True  # 简化返回值
 
     def purge(self, tablename: str = ''):
         """
@@ -1824,8 +1862,158 @@ class Mysqlop(SQLutilop):
 
         safe_table = self._escape_identifier(tablename)
         sql = f"TRUNCATE TABLE {safe_table}"
-        self.execute(sql)
+        self._execute_sql(sql, user_tag=f"清空表{tablename}")
         self.logger.info(f"表 {tablename} 已清空")
+
+    def paginate(self, tablename: str = "", conditions: Dict = None,
+                 fields: List[str] = None, order: Dict[str, bool] = None,
+                 page: int = 1, page_size: int = 100) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        分页查询
+
+        Args:
+            tablename: 表名，默认为当前选择的表
+            conditions: 查询条件
+            fields: 要查询的字段列表
+            order: 排序 {列名: 是否升序}
+            page: 页码，从1开始
+            page_size: 每页记录数
+
+        Returns:
+            (当前页数据, 总记录数)
+        """
+        tablename = tablename or self.__selected_table
+        if not tablename:
+            raise ValueError("未指定表名")
+
+        # 计算总记录数
+        count_sql, count_params = self.query_builder.build_select(
+            tablename=tablename,
+            fields=["COUNT(*) as total"],
+            conditions=conditions
+        )
+        total_result = self._query_one(count_sql, count_params, user_tag="分页查询-计数")
+        total = total_result["total"] if total_result else 0
+
+        # 空结果快速返回
+        if total == 0:
+            return [], 0
+
+        # 查询分页数据
+        offset = (page - 1) * page_size
+        data = self.select(
+            tablename=tablename,
+            conditions=conditions,
+            fields=fields,
+            order=order,
+            limit=page_size,
+            offset=offset,
+            user_tag=f"分页查询-第{page}页"
+        )
+
+        return data, total
+
+    def analyze_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Dict[str, Any]:
+        """
+        分析查询执行计划并提供优化建议
+
+        Args:
+            sql: SQL查询语句
+            args: 查询参数
+
+        Returns:
+            分析报告
+        """
+        self._ensure_connection()
+
+        # 获取执行计划
+        explain_sql = f"EXPLAIN {sql}"
+        explain_result = self._query_sql(explain_sql, args, user_tag="查询分析")
+
+        # 分析执行计划
+        analysis = {
+            "execution_plan": explain_result,
+            "recommendations": []
+        }
+
+        # 检查是否使用索引
+        for row in explain_result:
+            if row.get("key") is None and row.get("type") not in ["system", "const"]:
+                table = row.get("table", "")
+                analysis["recommendations"].append(f"表'{table}'未使用索引，考虑为查询条件添加索引")
+
+            if row.get("rows", 0) > 10000:
+                analysis["recommendations"].append(f"扫描行数较多({row.get('rows')}行)，考虑优化查询或添加索引")
+
+        return analysis
+
+    def shard_query(self, tablename: str, id_field: str,
+                    conditions: Dict = None, fields: List[str] = None,
+                    shard_size: int = 10000, process_func: Callable = None):
+        """
+        分片查询大表，自动按主键或指定字段进行分片查询
+
+        Args:
+            tablename: 表名
+            id_field: 用于分片的ID字段（应该有索引）
+            conditions: 查询条件
+            fields: 要查询的字段列表
+            shard_size: 每个分片大小
+            process_func: 处理每个分片数据的函数
+
+        Returns:
+            处理结果列表，如果没有process_func则返回所有数据
+        """
+        tablename = tablename or self.__selected_table
+        if not tablename:
+            raise ValueError("未指定表名")
+
+        # 获取最小和最大ID
+        min_max_sql, min_max_params = self.query_builder.build_select(
+            tablename=tablename,
+            fields=[f"MIN({id_field}) as min_id", f"MAX({id_field}) as max_id"],
+            conditions=conditions
+        )
+
+        result = self._query_one(min_max_sql, min_max_params, user_tag="分片查询-获取ID范围")
+        if not result or result['min_id'] is None:
+            return []
+
+        min_id, max_id = result['min_id'], result['max_id']
+
+        # 分片处理
+        results = []
+        for start_id in range(min_id, max_id + 1, shard_size):
+            end_id = min(start_id + shard_size - 1, max_id)
+
+            # 构建分片条件
+            shard_conditions = conditions.copy() if conditions else {}
+            shard_conditions[id_field] = {"$between": [start_id, end_id]}
+
+            # 查询分片
+            shard_sql, shard_params = self.query_builder.build_select(
+                tablename=tablename,
+                fields=fields,
+                conditions=shard_conditions,
+                order={id_field: True}
+            )
+
+            self.logger.debug(f"查询ID范围 {start_id} 到 {end_id}")
+            shard_data = self._query_sql(shard_sql, shard_params, user_tag=f"分片查询-{start_id}到{end_id}")
+
+            # 处理分片数据
+            if process_func:
+                shard_result = process_func(shard_data)
+                if shard_result:
+                    results.append(shard_result)
+            else:
+                results.extend(shard_data)
+
+            # 记录进度
+            progress = (end_id - min_id) / (max_id - min_id) * 100 if max_id > min_id else 100
+            self.logger.info(f"分片查询进度: {progress:.1f}%")
+
+        return results
 
     def join(self, main_table: str, joins: List[Tuple[str, str, JoinType, Dict[str, str]]],
              conditions: Dict = None, fields: Dict[str, List[str]] = None,
@@ -1861,7 +2049,7 @@ class Mysqlop(SQLutilop):
         )
 
         # 执行查询
-        return self.query(sql, params, bool_dict=bool_dict)
+        return self._query_sql(sql, params, bool_dict=bool_dict, user_tag="连接查询")
 
     def upsert(self, tablename: str, record: Dict[str, Any], unique_fields: List[str], **kwargs):
         """
@@ -1901,23 +2089,9 @@ class Mysqlop(SQLutilop):
             sql += f" ON DUPLICATE KEY UPDATE {', '.join(update_parts)}"
 
         # 执行SQL
-        self._ensure_connection()
-        cursor = None
-        try:
-            cursor = self.__connection.cursor()
-            cursor.execute(sql, values)
-            if not self.__in_transaction:
-                self.__connection.commit()
-            self.logger.info(f"Upsert到表 {tablename} 成功")
-            return True
-        except Exception as e:
-            if not self.__in_transaction:
-                self.__connection.rollback()
-            self.logger.error(f"Upsert失败: {e}")
-            raise RuntimeError(e) from None
-        finally:
-            if cursor:
-                cursor.close()
+        self._execute_sql(sql, values, user_tag=f"Upsert到表{tablename}")
+        self.logger.info(f"Upsert到表 {tablename} 成功")
+        return True
 
     def batch_insert(self, tablename: str, records: List[Dict[str, Any]],
                      size: int = 1000, **kwargs):
@@ -1951,23 +2125,9 @@ class Mysqlop(SQLutilop):
             )
 
             # 执行插入
-            self._ensure_connection()
-            cursor = None
-            try:
-                cursor = self.__connection.cursor()
-                cursor.execute(sql, params)
-                if not self.__in_transaction:
-                    self.__connection.commit()
-                total += len(batch)
-                self.logger.info(f"批量插入到表 {tablename} 成功，本批插入 {len(batch)} 条")
-            except Exception as e:
-                if not self.__in_transaction:
-                    self.__connection.rollback()
-                self.logger.error(f"批量插入失败: {e}")
-                raise RuntimeError(e) from None
-            finally:
-                if cursor:
-                    cursor.close()
+            self._execute_sql(sql, params, user_tag=f"批量插入到表{tablename}")
+            total += len(batch)
+            self.logger.info(f"批量插入到表 {tablename} 成功，本批插入 {len(batch)} 条")
 
         return total
 
@@ -1982,7 +2142,7 @@ class Mysqlop(SQLutilop):
         """
         host = host or "localhost"
         sql = f"ALTER USER '{username}'@'{host}' IDENTIFIED BY '{new_password}'"
-        self.execute(sql)
+        self._execute_sql(sql, user_tag="修改用户密码")
         self.logger.info("修改密码成功")
 
     def get_permissions(self):
@@ -2024,7 +2184,7 @@ class Mysqlop(SQLutilop):
 
             return permissions
 
-        result = self.query(sql)
+        result = self._query_sql(sql, user_tag="获取当前用户权限")
         privileges = [row[f"Grants for {self.adapter.config['user']}@%"] for row in result]
         self.logger.info("查询当前用户权限成功")
         return parse_grants(privileges)
@@ -2040,3 +2200,195 @@ class Mysqlop(SQLutilop):
             转义后的标识符
         """
         return self.query_builder.escape_identifier(identifier)
+
+    # ------------------ SQL历史记录查询方法 ------------------
+    def get_all_sql_history(self) -> List[Dict[str, Any]]:
+        """
+        获取所有SQL历史记录的字典列表
+
+        返回格式示例:
+        [
+            {
+                "id": 1,
+                "sql": "SELECT * FROM users",
+                "params": None,
+                "execution_time": "2025-05-15T10:30:45",
+                "duration": 0.12,
+                "status": "success",
+                "affected_rows": None,
+                "result_count": 50,
+                "error_message": None,
+                "database": "test_db",
+                "table": "users",
+                "operation_type": "SELECT",
+                "user_tag": "user_query"
+            },
+            ...
+        ]
+
+        Returns:
+            所有SQL历史记录的字典列表
+        """
+        if not self.enable_history or not self.__history:
+            return []
+
+        return [record.to_dict() for record in self.__history.get_all_records()]
+
+    def get_sql_history_statistics(self) -> Dict[str, Any]:
+        """
+        获取SQL历史记录的统计信息
+
+        返回格式:
+        {
+            'total_records': 100,
+            'operation_stats': {
+                'SELECT': 60,
+                'INSERT': 20,
+                'UPDATE': 15,
+                'DELETE': 5
+            },
+            'status_stats': {
+                'success': 90,
+                'error': 10
+            },
+            'avg_duration': 0.25,
+            'total_duration': 25.0,
+            'date_range': {
+                'earliest': "2025-05-01T08:00:00",
+                'latest': "2025-05-15T18:30:00"
+            }
+        }
+
+        Returns:
+            SQL历史记录的统计信息字典
+        """
+        if not self.enable_history or not self.__history:
+            return {
+                'total_records': 0,
+                'operation_stats': {},
+                'status_stats': {},
+                'avg_duration': 0,
+                'total_duration': 0,
+                'date_range': None
+            }
+
+        return self.__history.get_statistics()
+
+    # ------------------ SQL历史记录管理方法 ------------------
+    def clear_sql_history(self, keep_recent: int = 0):
+        """
+        清空SQL历史记录
+
+        Args:
+            keep_recent: 保留最近N条记录
+        """
+        if self.enable_history and self.__history:
+            self.__history.clear_records(keep_recent)
+            self.logger.info(f"已清空SQL历史记录，保留最近{keep_recent}条")
+
+    def export_sql_history(self, file_path: str):
+        """
+        导出SQL历史记录到文件
+
+        Args:
+            file_path: 导出文件路径
+        """
+        if not self.enable_history or not self.__history:
+            raise RuntimeError("SQL历史记录功能未启用")
+
+        self.__history.save_to_file(file_path)
+        self.logger.info(f"SQL历史记录已导出到: {file_path}")
+
+    def import_sql_history(self, file_path: str):
+        """
+        从文件导入SQL历史记录
+
+        Args:
+            file_path: 导入文件路径
+        """
+        if not self.enable_history or not self.__history:
+            raise RuntimeError("SQL历史记录功能未启用")
+
+        self.__history.load_from_file(file_path)
+        self.logger.info(f"已从文件导入SQL历史记录: {file_path}")
+
+    def enable_sql_history_auto_save(self, save_path: str):
+        """
+        启用SQL历史记录自动保存
+
+        Args:
+            save_path: 保存文件路径
+        """
+        if not self.enable_history or not self.__history:
+            raise RuntimeError("SQL历史记录功能未启用")
+
+        self.__history.auto_save = True
+        self.__history.save_path = save_path
+        self.logger.info(f"已启用SQL历史记录自动保存: {save_path}")
+
+    def disable_sql_history_auto_save(self):
+        """禁用SQL历史记录自动保存"""
+        if self.enable_history and self.__history:
+            self.__history.auto_save = False
+            self.logger.info("已禁用SQL历史记录自动保存")
+
+    def print_sql_history(self, count: int = 10):
+        """
+        打印SQL历史记录摘要
+
+        Args:
+            count: 显示最近记录数量
+        """
+        if not self.enable_history or not self.__history:
+            print("SQL历史记录功能未启用")
+            return
+
+        # 获取所有历史记录和统计信息
+        all_history = self.get_all_sql_history()
+        stats = self.get_sql_history_statistics()
+
+        # 如果没有历史记录，打印提示信息
+        if not all_history:
+            print("\n=== SQL历史记录摘要 ===")
+            print("没有历史记录可显示")
+            print("=" * 30)
+            return
+
+        # 按执行时间排序，获取最近的记录
+        all_history.sort(key=lambda x: x['execution_time'], reverse=True)
+        recent_records = all_history[:count]
+
+        print("\n=== SQL历史记录摘要 ===")
+        print(f"总记录数: {stats['total_records']}")
+        print(f"平均执行时间: {stats['avg_duration']:.3f}秒")
+        print(f"总执行时间: {stats['total_duration']:.3f}秒")
+
+        if stats['operation_stats']:
+            print("\n操作类型统计:")
+            for op_type, op_count in stats['operation_stats'].items():
+                print(f"  {op_type}: {op_count}次")
+
+        if stats['status_stats']:
+            print("\n执行状态统计:")
+            for status, status_count in stats['status_stats'].items():
+                print(f"  {status}: {status_count}次")
+
+        print(f"\n最近{len(recent_records)}条记录:")
+        for i, record in enumerate(recent_records, 1):
+            # 解析执行时间
+            exec_time = datetime.fromisoformat(record['execution_time'])
+
+            # 确定状态图标
+            status_icon = "✓" if record['status'] == "success" else "✗"
+
+            # 获取SQL预览（截断长SQL）
+            sql_preview = record['sql']
+            if len(sql_preview) > 50:
+                sql_preview = sql_preview[:47] + "..."
+
+            # 打印记录
+            print(f"  {i}. [{exec_time.strftime('%H:%M:%S')}] {status_icon} "
+                  f"{record['operation_type']} - {sql_preview} "
+                  f"({record['duration']:.3f}s)")
+
+        print("=" * 30)

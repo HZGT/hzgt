@@ -2,19 +2,12 @@
 import re
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from enum import Enum
 from logging import Logger
-from typing import Dict, Optional, Any, List, Tuple, Union, TypeVar, Generic
+from typing import Dict, Optional, Any, List, Tuple, Union, TypeVar
+
+from .common import JoinType
 
 T = TypeVar('T')  # 用于表示查询结果的类型
-
-
-class JoinType(Enum):
-    """连接类型枚举"""
-    INNER = "INNER JOIN"
-    LEFT = "LEFT JOIN"
-    RIGHT = "RIGHT JOIN"
-    FULL = "FULL JOIN"
 
 
 class SQLutilop(ABC):
@@ -112,62 +105,6 @@ class SQLutilop(ABC):
 
         Args:
             commit: 是否提交事务，False表示回滚
-        """
-        pass
-
-    @abstractmethod
-    def execute(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Any:
-        """
-        执行SQL语句
-
-        Args:
-            sql: SQL语句
-            args: 参数，可以是元组、字典或列表
-
-        Returns:
-            执行结果，具体类型由子类确定
-        """
-        pass
-
-    @abstractmethod
-    def executemany(self, sql: str, args_list: List[Union[tuple, dict]]) -> Any:
-        """
-        批量执行SQL语句
-
-        Args:
-            sql: SQL语句模板
-            args_list: 参数列表
-
-        Returns:
-            执行结果，具体类型由子类确定
-        """
-        pass
-
-    @abstractmethod
-    def query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> List[Dict[str, Any]]:
-        """
-        执行查询并返回结果集
-
-        Args:
-            sql: SQL查询语句
-            args: 查询参数
-
-        Returns:
-            查询结果列表，每项为一个字典
-        """
-        pass
-
-    @abstractmethod
-    def query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Optional[Dict[str, Any]]:
-        """
-        查询单条记录
-
-        Args:
-            sql: SQL查询语句
-            args: 查询参数
-
-        Returns:
-            单条记录字典，未找到时返回None
         """
         pass
 
@@ -597,146 +534,4 @@ class SQLutilop(ABC):
         return validated_fields
 
 
-class DBAdapter(Generic[T], ABC):
-    """
-    数据库适配器抽象类，用于适配不同的数据库系统
-    T是适配的目标数据库连接类型
-    """
 
-    @abstractmethod
-    def get_connection(self, **kwargs) -> T:
-        """获取数据库连接"""
-        pass
-
-    @abstractmethod
-    def close_connection(self, connection: T):
-        """关闭数据库连接"""
-        pass
-
-    @abstractmethod
-    def execute_query(self, connection: T, sql: str, params: Any = None) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        执行查询并返回结果
-
-        Args:
-            connection: 数据库连接
-            sql: SQL语句
-            params: 参数
-
-        Returns:
-            (结果集, 影响行数)
-        """
-        pass
-
-    @abstractmethod
-    def get_last_insert_id(self, connection: T, table_name: str = None) -> Any:
-        """获取最后插入的ID"""
-        pass
-
-    @abstractmethod
-    def get_placeholder_style(self) -> str:
-        """获取参数占位符样式"""
-        pass
-
-    @abstractmethod
-    def format_table_creation(self,
-                              tablename: str,
-                              columns: Dict[str, Dict[str, str]],
-                              primary_keys: List[str],
-                              **kwargs) -> str:
-        """格式化建表语句"""
-        pass
-
-
-class QueryBuilder(ABC):
-    """
-    SQL查询构建器抽象类，用于构建不同数据库系统的SQL语句
-    """
-
-    @abstractmethod
-    def build_select(self,
-                     tablename: str,
-                     fields: Optional[List[str]] = None,
-                     conditions: Optional[Dict] = None,
-                     order: Optional[Dict[str, bool]] = None,
-                     limit: Optional[int] = None,
-                     offset: Optional[int] = None,
-                     group_by: Optional[List[str]] = None,
-                     having: Optional[Dict] = None,
-                     **kwargs) -> Tuple[str, List]:
-        """构建SELECT语句"""
-        pass
-
-    @abstractmethod
-    def build_insert(self,
-                     tablename: str,
-                     data: Union[Dict[str, Any], List[Dict[str, Any]]],
-                     **kwargs) -> Tuple[str, List]:
-        """构建INSERT语句"""
-        pass
-
-    @abstractmethod
-    def build_update(self,
-                     tablename: str,
-                     update_values: Dict[str, Any],
-                     conditions: Optional[Dict] = None,
-                     **kwargs) -> Tuple[str, List]:
-        """构建UPDATE语句"""
-        pass
-
-    @abstractmethod
-    def build_delete(self,
-                     tablename: str,
-                     conditions: Optional[Dict] = None,
-                     **kwargs) -> Tuple[str, List]:
-        """构建DELETE语句"""
-        pass
-
-    @abstractmethod
-    def build_create_table(self,
-                           tablename: str,
-                           schema: Dict[str, Any],
-                           primary_key: Optional[List[str]] = None,
-                           if_not_exists: bool = True,
-                           **kwargs) -> str:
-        """构建CREATE TABLE语句"""
-        pass
-
-    @abstractmethod
-    def build_drop_table(self,
-                         tablename: str,
-                         if_exists: bool = True) -> str:
-        """构建DROP TABLE语句"""
-        pass
-
-    @abstractmethod
-    def build_join(self,
-                   main_table: str,
-                   joins: List[Tuple[str, str, JoinType, Dict[str, str]]],
-                   fields: Optional[Dict[str, List[str]]] = None,
-                   conditions: Optional[Dict] = None,
-                   order: Optional[Dict[str, bool]] = None,
-                   limit: Optional[int] = None,
-                   offset: Optional[int] = None,
-                   **kwargs) -> Tuple[str, List]:
-        """构建连接查询语句"""
-        pass
-
-
-class ConnectionPool(ABC):
-    """数据库连接池抽象类"""
-
-    @abstractmethod
-    def get_connection(self) -> Any:
-        """获取连接"""
-        pass
-
-    @abstractmethod
-    def release_connection(self, connection: Any):
-        """释放连接"""
-        pass
-
-    @abstractmethod
-    def close_all(self):
-        """关闭所有连接"""
-        pass
