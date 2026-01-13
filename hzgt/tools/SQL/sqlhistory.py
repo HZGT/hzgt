@@ -109,7 +109,7 @@ class SQLHistory:
 
         record = SQLHistoryRecord(
             id=self._next_id,
-            sql=sql.strip(),
+            sql=sql.strip(),  # % params if params else sql.strip(),
             params=params,
             execution_time=datetime.now(),
             duration=duration,

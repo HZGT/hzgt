@@ -1,3 +1,7 @@
+
+
+
+
 # -*- coding: utf-8 -*-
 import csv
 import os
@@ -679,7 +683,7 @@ class SQLiteop(SQLutilop):
         Returns:
             Logger: 日志记录器实例
         """
-        return set_log("hzgt.sqlite", "logs")
+        return set_log("hzgt.sqlite", fpath="logs", fname="sqlite")
 
     def __enter__(self):
         """上下文管理器入口"""
@@ -1254,12 +1258,6 @@ class SQLiteop(SQLutilop):
             转义后的标识符
         """
         return self.query_builder.escape_identifier(identifier)
-
-    # -------- 原有SQLiteop特有方法 --------
-
-    def start(self):
-        """连接到数据库（保持与原接口兼容）"""
-        self.connect()
 
     def enable_wal_mode(self) -> None:
         """

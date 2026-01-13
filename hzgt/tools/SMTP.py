@@ -35,10 +35,10 @@ class Smtpop:
         self.__msg = MIMEMultipart()  # 邮件信息
 
         if logger is None:
-            self.__logger = set_log("hzgt.smtp", os.path.join("logs", "smtp.log"), level=2)
+            self.__logger = set_log("hzgt.smtp", fpath="logs", fname="smtp", level=2)
         else:
             self.__logger = logger
-        self.__logger.info(f"SMTP类初始化完成")
+        self.__logger.info(f"SMTP类初始化完成", stacklevel=3)
 
     def __enter__(self):
         """
@@ -58,13 +58,13 @@ class Smtpop:
         登录SMTP服务器
         """
         self.__server = smtplib.SMTP(self.host, self.port)
-        self.__logger.info(f"正在连接SMTP服务器: {self.host}:{self.port}")
+        self.__logger.info(f"正在连接SMTP服务器: {self.host}:{self.port}", stacklevel=3)
         self.__server.starttls()  # 启用TLS加密
         try:
             self.__server.login(self.user, self.passwd)
-            self.__logger.info(f"SMTP客户端已登录, 登陆账号: {self.user}")
+            self.__logger.info(f"SMTP客户端已登录, 登陆账号: {self.user}", stacklevel=3)
         except Exception as err:
-            self.__logger.error(f"SMTP客户端登录失败, 错误信息: {err}")
+            self.__logger.error(f"SMTP客户端登录失败, 错误信息: {err}", stacklevel=3)
             raise
 
     def add_recipient(self, recipient: Union[str, Iterable[str]], *args):
@@ -105,7 +105,7 @@ class Smtpop:
         """
         if recipient not in self.__recipients:
             self.__recipients.append(recipient)
-            self.__logger.info(f"已添加收件人: {recipient}")
+            self.__logger.info(f"已添加收件人: {recipient}", stacklevel=4)
 
     def _add_unique_recipients(self, recipients: Iterable):
         """
@@ -130,7 +130,7 @@ class Smtpop:
             encoders.encode_base64(part)
             part.add_header("Content-Disposition", f"attachment; filename={file_path}")
             self.__msg.attach(part)
-            self.__logger.info(f"已添加附件: {file_path}")
+            self.__logger.info(f"已添加附件: {file_path}", stacklevel=3)
 
     def send(self, subject: str, body: str, html=False):
         """
@@ -151,9 +151,9 @@ class Smtpop:
         # 发送邮件
         if self.__server:
             self.__server.sendmail(self.user, self.__recipients, self.__msg.as_string())
-            self.__logger.info(f"邮件已发送至: {self.__recipients}")
+            self.__logger.info(f"邮件已发送至: {self.__recipients}", stacklevel=3)
         else:
-            self.__logger.error("SMTP服务器未登录, 无法发送邮件")
+            self.__logger.error("SMTP服务器未登录, 无法发送邮件", stacklevel=3)
             raise ConnectionError("SMTP服务器未登录")
 
     def close(self):
@@ -162,5 +162,5 @@ class Smtpop:
         """
         if self.__server:
             self.__server.quit()
-            self.__logger.info("SMTP客户端已关闭")
+            self.__logger.info("SMTP客户端已关闭", stacklevel=3)
 

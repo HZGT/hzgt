@@ -101,7 +101,7 @@ def ensure_file(file_path: str) -> None:
         open(normalized_path, 'a').close()
 
 
-def make_filename(
+def generate_filename(
     name: str,
     fname: Optional[str] = None,
     suffix: str = ".log"
@@ -134,3 +134,36 @@ def make_filename(
         return f"{base}{suffix}"
     return f"{name}{suffix}"
 
+
+def format_filename(filename: str, max_len: int = 30, front_len: int = 10, back_len: int = 10) -> str:
+    """
+    格式化文件名，超长时截断为 "前段...后段.后缀" 格式
+
+    :param filename: 原始文件名 (e.g., "my_very_long_document_file_name.txt")
+    :param max_len: 允许的最大显示长度
+    :param front_len: 截断时保留的前段字符数
+    :param back_len: 截断时保留的后段字符数 (不包含扩展名)
+    :return: 格式化后的文件名
+    """
+    # 分离文件名主部和扩展名
+    name_part, ext = os.path.splitext(filename)
+
+    # 如果文件名本身不超过最大长度，直接返回
+    if len(filename) <= max_len:
+        return filename
+
+    # 如果即使截断也无法满足最大长度要求，直接返回缩短版（极端情况处理）
+    if max_len < (front_len + back_len + 3 + len(ext)):
+        # 3是省略号"..."的长度
+        return name_part[:max_len - len(ext) - 3] + "..." + ext
+
+    # 正常截断处理
+    # 前段部分
+    front_part = name_part[:front_len]
+    # 后段部分（从后往前取back_len个字符）
+    back_part = name_part[-back_len:] if back_len > 0 else ""
+
+    # 组合成新文件名
+    formatted_name = f"{front_part}...{back_part}.{ext}"
+
+    return formatted_name

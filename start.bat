@@ -1,4 +1,4 @@
 git add .
-git commit -m "update the class called Mysqlop"
+git commit -m "Expand the function called getip()"
 git push
 pause

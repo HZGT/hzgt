@@ -15,6 +15,29 @@ from .sqlcore import SQLExecutionStatus, JoinType
 from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
 from .sqlhistory import SQLHistoryRecord, SQLHistory
 
+# 聚合函数列表
+AGGREGATE_FUNCTIONS = {
+    'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'GROUP_CONCAT', 'STD', 'STDDEV',
+    'VARIANCE', 'VAR_POP', 'VAR_SAMP', 'STDDEV_POP', 'STDDEV_SAMP'
+}
+
+# 常用SQL函数列表
+SQL_FUNCTIONS = {
+    # 字符串函数
+    'CONCAT', 'SUBSTRING', 'LEFT', 'RIGHT', 'LENGTH', 'CHAR_LENGTH',
+    'UPPER', 'LOWER', 'TRIM', 'LTRIM', 'RTRIM', 'REPLACE', 'REVERSE',
+    # 数学函数
+    'ABS', 'CEIL', 'CEILING', 'FLOOR', 'ROUND', 'TRUNCATE', 'MOD', 'POW', 'POWER',
+    'SQRT', 'EXP', 'LOG', 'LOG10', 'SIN', 'COS', 'TAN', 'RAND',
+    # 日期函数
+    'NOW', 'CURDATE', 'CURTIME', 'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY',
+    'HOUR', 'MINUTE', 'SECOND', 'DATE_ADD', 'DATE_SUB', 'DATEDIFF', 'DATE_FORMAT',
+    # 条件函数
+    'IF', 'IFNULL', 'NULLIF', 'COALESCE', 'CASE',
+    # 类型转换函数
+    'CAST', 'CONVERT', 'BINARY'
+}
+
 # 有效的MySQL数据类型
 VALID_MYSQL_DATA_TYPES = ['TINYINT', 'SMALLINT', 'INT', 'INTEGER', 'BIGINT', 'FLOAT', 'DOUBLE', 'DECIMAL', 'DATE',
                           'TIME', 'DATETIME', 'TIMESTAMP', 'CHAR', 'VARCHAR', 'TEXT', 'BLOB', 'LONGBLOB', 'ENUM',
@@ -266,9 +289,9 @@ class MySQLAdapter(DBAdapter):
 
 
 class MySQLQueryBuilder(QueryBuilder):
-    """MySQL查询构建器实现"""
+    """优化后的MySQL查询构建器实现"""
 
-    def __init__(self, logger: Optional[Logger] = None):
+    def __init__(self, logger: Logger = None):
         """
         初始化MySQL查询构建器
 
@@ -278,12 +301,196 @@ class MySQLQueryBuilder(QueryBuilder):
         self.logger = logger
 
     @staticmethod
-    def escape_identifier(identifier: str) -> str:
-        """转义标识符(表名、列名)"""
-        return f"`{identifier.replace('`', '``')}`"
+    def _is_function_call(expression: str) -> bool:
+        """
+        检查表达式是否为函数调用
+
+        Args:
+            expression: 表达式字符串
+
+        Returns:
+            是否为函数调用
+        """
+        # 移除空格并转为大写
+        expr = expression.strip().upper()
+
+        # 检查是否包含括号
+        if '(' not in expr or ')' not in expr:
+            return False
+
+        # 提取函数名
+        func_name = expr.split('(')[0].strip()
+
+        # 检查是否为已知函数
+        return func_name in AGGREGATE_FUNCTIONS or func_name in SQL_FUNCTIONS
+
+    @staticmethod
+    def _is_expression(field: str) -> bool:
+        """
+        检查字段是否为复杂表达式
+
+        Args:
+            field: 字段字符串
+
+        Returns:
+            是否为表达式
+        """
+        field = field.strip()
+
+        # 检查是否包含函数调用
+        if MySQLQueryBuilder._is_function_call(field):
+            return True
+
+        # 检查是否包含运算符
+        operators = ['+', '-', '*', '/', '%', '||']
+        if any(op in field for op in operators):
+            return True
+
+        # 检查是否为CASE表达式
+        if field.upper().startswith('CASE'):
+            return True
+
+        # 检查是否包含子查询
+        if '(' in field and 'SELECT' in field.upper():
+            return True
+
+        return False
+
+    @staticmethod
+    def _parse_function_expression(expression: str) -> Tuple[str, List[str]]:
+        """
+        解析函数表达式，提取函数名和参数
+
+        Args:
+            expression: 函数表达式
+
+        Returns:
+            (函数名, 参数列表)
+        """
+        expression = expression.strip()
+
+        # 找到第一个括号的位置
+        paren_pos = expression.find('(')
+        if paren_pos == -1:
+            return expression, []
+
+        func_name = expression[:paren_pos].strip()
+
+        # 提取括号内的内容
+        inner = expression[paren_pos + 1:-1].strip()
+
+        if not inner:
+            return func_name, []
+
+        # 简单的参数分割（不处理嵌套括号）
+        params = [param.strip() for param in inner.split(',')]
+
+        return func_name, params
+
+    def escape_identifier(self, identifier: str) -> str:
+        """
+        智能转义标识符，支持聚合函数、表达式等
+
+        Args:
+            identifier: 标识符字符串
+
+        Returns:
+            转义后的标识符
+        """
+        if not identifier:
+            return identifier
+
+        identifier = identifier.strip()
+
+        # 处理星号
+        if identifier == '*':
+            return '*'
+
+        # 处理已经包含反引号的标识符
+        if identifier.startswith('`') and identifier.endswith('`'):
+            return identifier
+
+        # 处理函数调用和表达式
+        if self._is_expression(identifier):
+            return self._escape_expression(identifier)
+
+        # 处理复合标识符 (table.column)
+        if '.' in identifier and not self._is_function_call(identifier):
+            parts = identifier.split('.')
+            escaped_parts = []
+            for part in parts:
+                part = part.strip()
+                if part == '*':
+                    escaped_parts.append('*')
+                elif part and not part.startswith('`'):
+                    escaped_parts.append(f'`{part.replace("`", "``")}`')
+                else:
+                    escaped_parts.append(part)
+            return '.'.join(escaped_parts)
+
+        # 处理普通标识符
+        if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
+            return f'`{identifier}`'
+
+        # 处理包含特殊字符的标识符
+        return f'`{identifier.replace("`", "``")}`'
+
+    def _escape_expression(self, expression: str) -> str:
+        """
+        转义复杂表达式
+
+        Args:
+            expression: 表达式字符串
+
+        Returns:
+            转义后的表达式
+        """
+        expression = expression.strip()
+
+        # 处理函数调用
+        if self._is_function_call(expression):
+            func_name, params = self._parse_function_expression(expression)
+
+            # 转义函数参数
+            escaped_params = []
+            for param in params:
+                param = param.strip()
+                if param == '*':
+                    escaped_params.append('*')
+                elif param.isdigit() or param.replace('.', '').isdigit():
+                    # 数字字面量不需要转义
+                    escaped_params.append(param)
+                elif param.startswith("'") and param.endswith("'"):
+                    # 字符串字面量不需要转义
+                    escaped_params.append(param)
+                elif self._is_function_call(param):
+                    # 嵌套函数调用
+                    escaped_params.append(self._escape_expression(param))
+                else:
+                    # 普通标识符
+                    escaped_params.append(self.escape_identifier(param))
+
+            return f"{func_name}({', '.join(escaped_params)})"
+
+        # 处理CASE表达式
+        if expression.upper().startswith('CASE'):
+            # CASE表达式比较复杂，这里简化处理
+            return expression
+
+        # 处理算术表达式
+        # 这里可以添加更复杂的表达式解析逻辑
+        return expression
 
     def _build_where_clause(self, conditions: Optional[Dict]) -> Tuple[str, List]:
-        """构建WHERE子句和参数"""
+        """
+        构建WHERE子句和参数，使用参数化查询
+
+        Args:
+            conditions: 查询条件
+
+        Returns:
+            (WHERE子句, 参数列表)
+        """
         if not conditions:
             return "", []
 
@@ -339,26 +546,9 @@ class MySQLQueryBuilder(QueryBuilder):
                         if not op:
                             raise ValueError(f"无效操作符: {op_symbol}")
 
-                        if op in ('BETWEEN', 'NOT BETWEEN'):
-                            if not isinstance(op_value, (list, tuple)) or len(op_value) != 2:
-                                raise ValueError(f"{op} 需要两个值的列表")
-                            where_parts.append(f"{safe_col} {op} %s AND %s")
-                            params.extend(op_value)
-                        elif op in ('IN', 'NOT IN'):
-                            if not isinstance(op_value, (list, tuple)):
-                                raise ValueError(f"{op} 需要列表或元组")
-                            placeholders = ', '.join(['%s'] * len(op_value))
-                            where_parts.append(f"{safe_col} {op} ({placeholders})")
-                            params.extend(op_value)
-                        elif op in ('IS', 'IS NOT'):
-                            # IS NULL 和 IS NOT NULL 不需要参数
-                            where_parts.append(f"{safe_col} {op} NULL"
-                                               if op_value is None else f"{safe_col} {op} %s")
-                            if op_value is not None:
-                                params.append(op_value)
-                        else:
-                            where_parts.append(f"{safe_col} {op} %s")
-                            params.append(op_value)
+                        clause, clause_params = self._build_operator_clause(safe_col, op, op_value)
+                        where_parts.append(clause)
+                        params.extend(clause_params)
                 else:
                     # 简单等值条件
                     if value is None:
@@ -368,6 +558,104 @@ class MySQLQueryBuilder(QueryBuilder):
                         params.append(value)
 
         return (" AND ".join(where_parts), params) if where_parts else ("", [])
+
+    def _build_operator_clause(self, column: str, operator: str, value: Any) -> Tuple[str, List]:
+        """
+        构建操作符子句
+
+        Args:
+            column: 列名（已转义）
+            operator: 操作符
+            value: 值
+
+        Returns:
+            (子句, 参数列表)
+        """
+        params = []
+
+        if operator in ('BETWEEN', 'NOT BETWEEN'):
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise ValueError(f"{operator} 需要两个值的列表")
+            clause = f"{column} {operator} %s AND %s"
+            params.extend(value)
+
+        elif operator in ('IN', 'NOT IN'):
+            if not isinstance(value, (list, tuple)):
+                raise ValueError(f"{operator} 需要列表或元组")
+            if not value:  # 空列表处理
+                clause = "1=0" if operator == 'IN' else "1=1"
+            else:
+                placeholders = ', '.join(['%s'] * len(value))
+                clause = f"{column} {operator} ({placeholders})"
+                params.extend(value)
+
+        elif operator in ('IS', 'IS NOT'):
+            if value is None:
+                clause = f"{column} {operator} NULL"
+            else:
+                clause = f"{column} {operator} %s"
+                params.append(value)
+
+        elif operator in ('LIKE', 'NOT LIKE'):
+            clause = f"{column} {operator} %s"
+            params.append(value)
+
+        elif operator in ('REGEXP', 'NOT REGEXP'):
+            clause = f"{column} {operator} %s"
+            params.append(value)
+
+        else:
+            # 标准比较操作符
+            clause = f"{column} {operator} %s"
+            params.append(value)
+
+        return clause, params
+
+    def _build_field_list(self, fields: Optional[List[str]]) -> str:
+        """
+        构建字段列表
+
+        Args:
+            fields: 字段列表
+
+        Returns:
+            字段列表字符串
+        """
+        if not fields:
+            return "*"
+
+        escaped_fields = []
+        for field in fields:
+            if not field:
+                continue
+
+            field = field.strip()
+
+            # 处理别名 (field AS alias 或 field alias)
+            if ' AS ' in field.upper():
+                parts = re.split(r'\s+AS\s+', field, 1, re.IGNORECASE)
+                if len(parts) == 2:
+                    field_part = parts[0].strip()
+                    alias_part = parts[1].strip()
+                    escaped_field = self.escape_identifier(field_part)
+                    escaped_alias = self.escape_identifier(alias_part)
+                    escaped_fields.append(f"{escaped_field} AS {escaped_alias}")
+                    continue
+
+            # 检查是否有空格分隔的别名（但不是函数调用）
+            parts = field.split()
+            if len(parts) == 2 and not self._is_function_call(field):
+                field_part = parts[0]
+                alias_part = parts[1]
+                escaped_field = self.escape_identifier(field_part)
+                escaped_alias = self.escape_identifier(alias_part)
+                escaped_fields.append(f"{escaped_field} AS {escaped_alias}")
+                continue
+
+            # 普通字段或表达式
+            escaped_fields.append(self.escape_identifier(field))
+
+        return ", ".join(escaped_fields)
 
     def build_select(self,
                      tablename: str,
@@ -380,12 +668,11 @@ class MySQLQueryBuilder(QueryBuilder):
                      having: Optional[Dict] = None,
                      **kwargs) -> Tuple[str, List]:
         """构建SELECT语句"""
-        # 处理表名和字段
+        # 处理表名
         safe_table = self.escape_identifier(tablename)
-        fields_str = "*"
-        if fields:
-            safe_fields = [self.escape_identifier(f) for f in fields]
-            fields_str = ", ".join(safe_fields)
+
+        # 处理字段
+        fields_str = self._build_field_list(fields)
 
         # 基础查询
         sql = f"SELECT {fields_str} FROM {safe_table}"
@@ -628,7 +915,6 @@ class MySQLQueryBuilder(QueryBuilder):
 
         # 处理连接
         join_clauses = []
-        join_params = []
         for i, (table, alias, join_type, join_conds) in enumerate(joins, 1):
             safe_table = self.escape_identifier(table)
             join_conditions = []
@@ -637,7 +923,9 @@ class MySQLQueryBuilder(QueryBuilder):
             for main_col, join_col in join_conds.items():
                 main_table_prefix = kwargs.get("main_alias", "t0")
                 join_conditions.append(
-                    f"{main_table_prefix}.{self.escape_identifier(main_col)} = {alias}.{self.escape_identifier(join_col)}"
+                    f"{main_table_prefix}.{self.escape_identifier(main_col)}"
+                    f" = "
+                    f"{alias}.{self.escape_identifier(join_col)}"
                 )
 
             join_clause = f"{join_type.value} {safe_table} AS {alias} ON {' AND '.join(join_conditions)}"
@@ -648,7 +936,8 @@ class MySQLQueryBuilder(QueryBuilder):
         if fields:
             for table_alias, cols in fields.items():
                 for col in cols:
-                    select_fields.append(f"{table_alias}.{self.escape_identifier(col)} AS {table_alias}_{col}")
+                    escaped_col = self.escape_identifier(col)
+                    select_fields.append(f"{table_alias}.{escaped_col} AS {table_alias}_{col}")
         else:
             # 默认选择所有字段
             select_fields.append(f"{main_alias}.*")
@@ -657,11 +946,10 @@ class MySQLQueryBuilder(QueryBuilder):
 
         # 构建基础查询
         sql = f"SELECT {', '.join(select_fields)} FROM {from_clause} {' '.join(join_clauses)}"
-        params = join_params.copy()
+        params = []
 
         # 处理WHERE条件
         if conditions:
-            # 需要特殊处理条件，因为它们可能引用表别名
             where_clause, where_params = self._build_where_clause(conditions)
             if where_clause:
                 sql += f" WHERE {where_clause}"
@@ -692,12 +980,75 @@ class MySQLQueryBuilder(QueryBuilder):
 
         return sql, params
 
+    def build_aggregate_query(self,
+                              tablename: str,
+                              aggregates: Dict[str, str],
+                              conditions: Optional[Dict] = None,
+                              group_by: Optional[List[str]] = None,
+                              having: Optional[Dict] = None,
+                              **kwargs) -> Tuple[str, List]:
+        """
+        构建聚合查询
+
+        Args:
+            tablename: 表名
+            aggregates: 聚合函数字典 {别名: 聚合表达式}
+            conditions: WHERE条件
+            group_by: GROUP BY字段
+            having: HAVING条件
+            **kwargs: 其他参数
+
+        Returns:
+            (SQL语句, 参数列表)
+        """
+        safe_table = self.escape_identifier(tablename)
+
+        # 构建聚合字段
+        agg_fields = []
+        for alias, expression in aggregates.items():
+            escaped_expr = self.escape_identifier(expression)
+            escaped_alias = self.escape_identifier(alias)
+            agg_fields.append(f"{escaped_expr} AS {escaped_alias}")
+
+        # 添加GROUP BY字段到SELECT中
+        if group_by:
+            for field in group_by:
+                escaped_field = self.escape_identifier(field)
+                if escaped_field not in agg_fields:
+                    agg_fields.insert(0, escaped_field)
+
+        fields_str = ", ".join(agg_fields)
+
+        # 构建基础查询
+        sql = f"SELECT {fields_str} FROM {safe_table}"
+        params = []
+
+        # 处理WHERE条件
+        where_clause, where_params = self._build_where_clause(conditions)
+        if where_clause:
+            sql += f" WHERE {where_clause}"
+            params.extend(where_params)
+
+        # 处理GROUP BY
+        if group_by:
+            group_fields = [self.escape_identifier(field) for field in group_by]
+            sql += f" GROUP BY {', '.join(group_fields)}"
+
+            # 处理HAVING
+            if having:
+                having_clause, having_params = self._build_where_clause(having)
+                if having_clause:
+                    sql += f" HAVING {having_clause}"
+                    params.extend(having_params)
+
+        return sql, params
+
 
 class MySQLConnectionPool(ConnectionPool):
     """简单的MySQL连接池实现"""
 
     def __init__(self, adapter: MySQLAdapter, max_connections: int = 5,
-                 connection_timeout: int = 5, logger: Optional[Logger] = None):
+                 connection_timeout: int = 5, logger: Logger = None):
         """
         初始化连接池
 
@@ -796,7 +1147,8 @@ class Mysqlop(SQLutilop):
     """MySQL操作工具"""
 
     def __init__(self, host: str, port: int, user: str, passwd: str, database: str = None, charset: str = "utf8",
-                 logger: Logger = None, autoreconnect: bool = True, reconnect_retries: int = 3,
+                 logger: Logger= None, autoreconnect: bool = True,
+                 reconnect_retries: int = 3,
                  pool_size: int = 5, enable_history: bool = True, history_max_records: int = 100,
                  history_auto_save: bool = False, history_save_path: Optional[str] = None):
         """
@@ -855,7 +1207,7 @@ class Mysqlop(SQLutilop):
         Returns:
             Logger: 日志记录器实例
         """
-        return set_log("hzgt.mysql", "logs")
+        return set_log("hzgt.mysql", fpath="logs", fname="mysql")
 
     def _record_sql_history(self, sql: str, params: Optional[Any] = None,
                             duration: float = 0.0, status: SQLExecutionStatus = SQLExecutionStatus.SUCCESS,
@@ -1059,9 +1411,9 @@ class Mysqlop(SQLutilop):
         finally:
             if cursor:
                 cursor.close()
-                
+
     def _query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
-                  user_tag: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                   user_tag: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         查询单条记录
 
@@ -1271,10 +1623,10 @@ class Mysqlop(SQLutilop):
     # ------------------ 流式查询方法 ------------------
 
     def _stream_query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
-                     size: int = 5000, bool_dict: bool = False,
-                     use_server_side_cursor: bool = True,
-                     user_tag: Optional[str] = None) -> Generator[
-        Union[Dict[str, Any], Dict[str, List]], None, None]:
+                      size: int = 5000, bool_dict: bool = False,
+                      use_server_side_cursor: bool = True,
+                      user_tag: Optional[str] = None) -> Generator[
+            Union[Dict[str, Any], Dict[str, List]], None, None]:
         """
         流式执行查询，以迭代器方式返回结果，适合大数据量查询
 
@@ -1292,7 +1644,6 @@ class Mysqlop(SQLutilop):
         """
         start_time = time.time()
         total_rows = 0
-        error_message = None
         status = SQLExecutionStatus.SUCCESS
 
         self._ensure_connection()
@@ -1400,7 +1751,6 @@ class Mysqlop(SQLutilop):
                 cursor.close()
 
     # ------------------ 业务方法 ------------------
-
     def select_db(self, dbname: str):
         """
         选择数据库
@@ -1408,15 +1758,43 @@ class Mysqlop(SQLutilop):
         Args:
             dbname: 数据库名
         """
-        self.__selected_db = dbname
-        self.logger.info(f"选择数据库[{dbname}]")
+        # 如果已经是当前数据库，无需切换
+        if self.__selected_db == dbname:
+            return
 
-        # 更新连接配置
-        self.adapter.config["database"] = dbname
-        # 如果已连接，需要重新连接以应用新配置
-        if self.__connection:
-            self.close()
+        old_db = self.__selected_db
+        self.__selected_db = dbname
+        self.logger.info(f"切换数据库: {old_db} -> {dbname}")
+
+        try:
+            # 如果已经有连接，先执行 USE 命令
+            if self.__connection:
+                try:
+                    # 尝试直接切换数据库
+                    safe_db = self._escape_identifier(dbname)
+                    self._execute_sql(f"USE {safe_db}", user_tag=f"切换数据库到{dbname}")
+                    self.logger.debug(f"已通过USE命令切换数据库到 {dbname}")
+                    return  # 成功切换，无需重新连接
+                except Exception as e:
+                    self.logger.warning(f"USE命令失败，将重新连接: {e}")
+                    # 如果USE失败，关闭连接并重新建立
+                    self.close()
+
+            # 更新连接配置
+            self.adapter.config["database"] = dbname
+
+            # 如果连接池存在，关闭所有连接（强制使用新配置）
+            if hasattr(self, 'connection_pool') and self.connection_pool:
+                self.connection_pool.close_all()
+
+            # 重新连接
             self.connect()
+
+        except Exception as e:
+            # 恢复原来的数据库设置
+            self.__selected_db = old_db
+            self.logger.error(f"切换数据库失败: {e}")
+            raise RuntimeError(f"无法切换到数据库 {dbname}: {e}") from None
 
     def select_table(self, tablename: str):
         """
@@ -1427,6 +1805,26 @@ class Mysqlop(SQLutilop):
         """
         self.__selected_table = tablename
         self.logger.debug(f"已记录选择表: {tablename}")
+
+    def get_curdb(self) -> str:
+        """
+        获取当前数据库名
+        Returns:
+            当前数据库名
+        """
+        if not self.__selected_db:
+            raise RuntimeError("请先选择数据库")
+        return self.__selected_db
+
+    def get_curtable(self) -> str:
+        """
+        获取当前表名
+        Returns:
+            当前表名
+        """
+        if not self.__selected_table:
+            raise RuntimeError("请先选择表")
+        return self.__selected_table
 
     def get_curuser(self) -> List[Dict[str, Any]]:
         """
@@ -1708,7 +2106,7 @@ class Mysqlop(SQLutilop):
                limit: int = None, offset: int = None, bool_dict: bool = False,
                stream: bool = False, size: int = 5000,
                use_index_hint: bool = False, use_server_side_cursor: bool = True, **kwargs) -> Union[
-        list[dict[str, Any]], dict[str, Any], Generator[dict[str, Any], None, None]]:
+            list[dict[str, Any]], dict[str, Any], Generator[dict[str, Any], None, None]]:
         """
         查询数据
 
@@ -1892,6 +2290,8 @@ class Mysqlop(SQLutilop):
             fields=["COUNT(*) as total"],
             conditions=conditions
         )
+        print(count_sql, count_params)
+
         total_result = self._query_one(count_sql, count_params, user_tag="分页查询-计数")
         total = total_result["total"] if total_result else 0
 

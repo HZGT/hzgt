@@ -10,7 +10,7 @@ from pyftpdlib.handlers import FTPHandler, ThrottledDTPHandler
 from pyftpdlib.servers import FTPServer
 from tqdm import trange
 
-from hzgt.core.fileop import getfsize, bitconv
+from hzgt.core.fileop import getfsize, bitconv, format_filename
 from hzgt.core.log import set_log
 from hzgt.core.strop import restrop
 
@@ -129,7 +129,7 @@ class Ftpserver:
         """
         logfilename = logfilename if logfilename else "ftps.log"
 
-        set_log('pyftpdlib', "logs", logfilename, level, encoding=encoding)
+        set_log('pyftpdlib', fpath="logs", fname=logfilename, level=level, encoding=encoding)
 
         # logger = logging.getLogger('pyftpdlib')
         # logger.setLevel(level)
@@ -269,9 +269,13 @@ class Ftpclient:
         if not os.path.exists(savepath):
             os.makedirs(savepath)
 
-        sfsize = bitconv(self.size(server_filename))  # 转换总大小
-        print(f"[{restrop(server_filename)}] 文件大小: {restrop(sfsize[0], f=4)} {sfsize[1]}")
-        with (trange(sfsize[2], desc='下载中', unit="B", unit_divisor=1024, unit_scale=True, ncols=100) as tbar,
+        # fsize = self.size(server_filename)
+        newfname = format_filename(server_filename)
+        # sfsize = bitconv(fsize)  # 转换总大小
+        # print(f"[{restrop(server_filename)}] 文件大小: {restrop(sfsize[0], f=4)} {sfsize[1]}")
+        with (trange(self.size(server_filename), desc=f'下载中', unit="B", unit_divisor=1024, unit_scale=True,
+                     ncols=100 + len(newfname),
+                     postfix=f"[{newfname}]") as tbar,
               open(os.path.join(savepath, savename), "wb") as file_handle):  # 以写模式在本地打开文件
             def _callback(data):
                 file_handle.write(data)
@@ -292,10 +296,14 @@ class Ftpclient:
         file_name, extension = os.path.splitext(os.path.basename(local_file))
         server_savename = server_savename if server_savename else file_name + extension  # 默认使用本地命名
 
-        lfsize = getfsize(local_file)  # 获取文件大小
-        print(f"[{restrop(local_file)}] 文件大小: {restrop(lfsize[0], f=4)} {lfsize[1]}")
+        # lfsize = getfsize(local_file)  # 获取文件大小
+        newfname = format_filename(os.path.basename(local_file))
+        # fsizet = bitconv(lfsize)
+        # print(f"[{restrop(local_file)}] 文件大小: {restrop(fsizet[0], f=4)} {fsizet[1]}")
         time.sleep(0.17)
-        with (trange(lfsize[2], desc='上传中', unit="B", unit_divisor=1024, unit_scale=True, ncols=100) as tbar,
+        with (trange(getfsize(local_file), desc=f'上传中', unit="B", unit_divisor=1024, unit_scale=True,
+                     ncols=100 + len(newfname),
+                     postfix=f"[{newfname}]") as tbar,
               open(local_file, 'rb') as file_handle):
             def _callback(data):
                 tbar.update(len(data))  # 更新进度条

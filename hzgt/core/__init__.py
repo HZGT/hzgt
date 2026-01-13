@@ -2,13 +2,13 @@
 from .strop import pic, restrop
 
 # 文件
-from .fileop import bitconv, getfsize, ensure_file, make_filename
+from .fileop import bitconv, getfsize, ensure_file, generate_filename
 
 # 装饰器 gettime 获取函数执行时间
-from .Decorator import gettime, vargs
+from .Decorator import gettime, vargs, dual_support
 
 # 日志
-from .log import set_log, bind_logger
+from .log import set_log
 
 # IP地址相关
 from .ipss import getip, validate_ip
@@ -21,8 +21,8 @@ from .cmdutils import is_admin, require_admin, execute_command, run_as_admin, ch
 
 __all__ = [
     "pic", "restrop",
-    "bitconv", "getfsize", "ensure_file", "make_filename",
-    "gettime", "vargs",
+    "bitconv", "getfsize", "ensure_file", "generate_filename",
+    "gettime", "vargs", "dual_support",
     "set_log", "bind_logger",
     "getip", "validate_ip",
     "AutoConfig",

@@ -98,7 +98,7 @@ class Mqttop:
         self.protocol = self.__protocol[protocol]
         
         if logger is None:
-            self.__logger = set_log("hzgt.mqtt", os.path.join("logs", "mqtt.log"), level=2)
+            self.__logger = set_log("hzgt.mqtt", fpath="logs", fname="mqtt", level=2)
         else:
             self.__logger = logger
 

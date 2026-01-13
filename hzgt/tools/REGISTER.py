@@ -7,6 +7,7 @@ class Func_Register(dict):
     """
     函数注册器
     """
+
     def __init__(self, *args, **kwargs):
         super(Func_Register, self).__init__(*args, **kwargs)
         self._dict = {}
@@ -21,6 +22,7 @@ class Func_Register(dict):
         :param target: 函数名
         :return:
         """
+
         def add_item(key, value):
             if not callable(value):
                 raise ValueError(f'{restrop("Error:")} {value} 必须是可调用的!')
@@ -29,9 +31,9 @@ class Func_Register(dict):
             self[key] = value
             return value
 
-        if callable(target):    # 传入的target可调用 --> 没有给注册名 --> 传入的函数名或类名作为注册名
+        if callable(target):  # 传入的target可调用 --> 没有给注册名 --> 传入的函数名或类名作为注册名
             return add_item(target.__name__, target)
-        else:                   # 不可调用 --> 传入了注册名 --> 作为可调用对象的注册名
+        else:  # 不可调用 --> 传入了注册名 --> 作为可调用对象的注册名
             return lambda x: add_item(target, x)
 
     def __setitem__(self, key, value):
@@ -72,6 +74,7 @@ class Class_Register(dict):
     """
     类注册器
     """
+
     def __init__(self, registry_name, *args, **kwargs):
         super(Class_Register, self).__init__(*args, **kwargs)
         self._dict = {}
@@ -94,6 +97,7 @@ class Class_Register(dict):
         :param target:
         :return:
         """
+
         def add(key, value):
             self[key] = value
             return value
@@ -123,4 +127,3 @@ class Class_Register(dict):
         :return:
         """
         return self._dict.items()
-

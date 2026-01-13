@@ -8,7 +8,7 @@ import threading
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Union, Dict, Any, List
 
-from hzgt.core import ensure_file, vargs, restrop, make_filename
+from hzgt.core import ensure_file, vargs, restrop, generate_filename
 
 LOG_LEVEL_DICT = {
     0: logging.NOTSET,
@@ -284,260 +284,260 @@ class _AsyncLogHandler(logging.Handler):
         super().close()
 
 
-class _BoundContextLogger(logging.LoggerAdapter):
-    """
-    绑定到特定日志记录器的上下文日志记录器
-    继承自 logging.LoggerAdapter，提供更贴近底层的实现
-    """
-
-    def __init__(self, logger: logging.Logger, extra: Optional[Dict[str, Any]] = None):
-        """
-        初始化绑定上下文日志记录器
-
-        :param logger: 绑定的日志记录器实例
-        :param extra: 额外的上下文信息（字典）
-        """
-        super().__init__(logger, extra or {})
-        self.logger = logger
-        self.extra = extra or {}
-
-    def process(self, msg: str, kwargs: Dict[str, Any]) -> tuple:
-        """
-        处理日志消息和关键字参数，添加上下文信息
-
-        重写 LoggerAdapter 的 process 方法
-        """
-        # 获取传入的上下文（如果有）
-        context = kwargs.pop("context", None) or {}
-
-        # 合并实例级上下文和本次日志上下文
-        merged_extra = {**self.extra, **context}
-
-        # 构建 extra 字典（添加 ctx_ 前缀）
-        extra = {}
-        for key, value in merged_extra.items():
-            extra[f"ctx_{key}"] = value
-
-        # 更新 kwargs 中的 extra
-        if "extra" in kwargs:
-            # 合并已有的 extra
-            kwargs["extra"] = {**kwargs["extra"], **extra}
-        else:
-            kwargs["extra"] = extra
-
-        return msg, kwargs
-
-    def log(
-            self,
-            level: int,
-            msg: str,
-            context: Optional[Dict[str, Any]] = None,
-            exc_info: Optional[Union[bool, BaseException]] = None,
-            stack_info: bool = False,
-            stacklevel: int = 3,  # 默认跳过 3 层封装
-            **kwargs
-    ) -> None:
-        """
-        带上下文的日志记录方法
-
-        :param level: 日志级别
-        :param msg: 日志消息
-        :param context: 本次日志的上下文数据（字典）
-        :param exc_info: 异常信息（True 或 Exception 实例）
-        :param stack_info: 是否包含堆栈信息
-        :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
-        """
-        # 确保使用正确的堆栈级别
-        if stacklevel < 3:
-            stacklevel = 3  # 最少需要跳过 3 层封装
-
-        # 添加上下文到 kwargs
-        if context is not None:
-            kwargs["context"] = context
-
-        # 调用底层 logger 的 log 方法
-        super().log(
-            level,
-            msg,
-            exc_info=exc_info,
-            stack_info=stack_info,
-            stacklevel=stacklevel,
-            **kwargs
-        )
-
-    # 以下方法保持与原有接口兼容
-    def debug(
-            self,
-            msg: str,
-            context: Optional[Dict[str, Any]] = None,
-            exc_info: Optional[Union[bool, BaseException]] = None,
-            stack_info: bool = False,
-            stacklevel: int = 3,
-            **kwargs
-    ) -> None:
-        """
-        DEBUG级别带上下文的日志记录
-
-        :param msg: 日志消息
-        :param context: 上下文数据（字典）
-        :param exc_info: 异常信息（True 或 Exception 实例）
-        :param stack_info: 是否包含堆栈信息
-        :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
-        """
-        # 设置合适的堆栈级别（跳过 3 层封装）
-        if stacklevel < 3:
-            stacklevel = 3
-
-        # 添加上下文到 kwargs
-        if context is not None:
-            kwargs["context"] = context
-
-        super().debug(
-            msg,
-            exc_info=exc_info,
-            stack_info=stack_info,
-            stacklevel=stacklevel,
-            **kwargs
-        )
-
-    def info(
-            self,
-            msg: str,
-            context: Optional[Dict[str, Any]] = None,
-            exc_info: Optional[Union[bool, BaseException]] = None,
-            stack_info: bool = False,
-            stacklevel: int = 3,
-            **kwargs
-    ) -> None:
-        """
-        INFO级别带上下文的日志记录
-
-        :param msg: 日志消息
-        :param context: 上下文数据（字典）
-        :param exc_info: 异常信息（True 或 Exception 实例）
-        :param stack_info: 是否包含堆栈信息
-        :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
-        """
-        if stacklevel < 3:
-            stacklevel = 3
-
-        if context is not None:
-            kwargs["context"] = context
-
-        super().info(
-            msg,
-            exc_info=exc_info,
-            stack_info=stack_info,
-            stacklevel=stacklevel,
-            **kwargs
-        )
-
-    def warning(
-            self,
-            msg: str,
-            context: Optional[Dict[str, Any]] = None,
-            exc_info: Optional[Union[bool, BaseException]] = None,
-            stack_info: bool = False,
-            stacklevel: int = 3,
-            **kwargs
-    ) -> None:
-        """
-        WARNING级别带上下文的日志记录
-
-        :param msg: 日志消息
-        :param context: 上下文数据（字典）
-        :param exc_info: 异常信息（True 或 Exception 实例）
-        :param stack_info: 是否包含堆栈信息
-        :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
-        """
-        if stacklevel < 3:
-            stacklevel = 3
-
-        if context is not None:
-            kwargs["context"] = context
-
-        super().warning(
-            msg,
-            exc_info=exc_info,
-            stack_info=stack_info,
-            stacklevel=stacklevel,
-            **kwargs
-        )
-
-    def error(
-            self,
-            msg: str,
-            context: Optional[Dict[str, Any]] = None,
-            exc_info: Optional[Union[bool, BaseException]] = None,
-            stack_info: bool = False,
-            stacklevel: int = 3,
-            **kwargs
-    ) -> None:
-        """
-        ERROR级别带上下文的日志记录
-
-        :param msg: 日志消息
-        :param context: 上下文数据（字典）
-        :param exc_info: 异常信息（True 或 Exception 实例）
-        :param stack_info: 是否包含堆栈信息
-        :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
-        """
-        if stacklevel < 3:
-            stacklevel = 3
-
-        if context is not None:
-            kwargs["context"] = context
-
-        super().error(
-            msg,
-            exc_info=exc_info,
-            stack_info=stack_info,
-            stacklevel=stacklevel,
-            **kwargs
-        )
-
-    def critical(
-            self,
-            msg: str,
-            context: Optional[Dict[str, Any]] = None,
-            exc_info: Optional[Union[bool, BaseException]] = None,
-            stack_info: bool = False,
-            stacklevel: int = 3,
-            **kwargs
-    ) -> None:
-        """
-        CRITICAL级别带上下文的日志记录
-
-        :param msg: 日志消息
-        :param context: 上下文数据（字典）
-        :param exc_info: 异常信息（True 或 Exception 实例）
-        :param stack_info: 是否包含堆栈信息
-        :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
-        """
-        if stacklevel < 3:
-            stacklevel = 3
-
-        if context is not None:
-            kwargs["context"] = context
-
-        super().critical(
-            msg,
-            exc_info=exc_info,
-            stack_info=stack_info,
-            stacklevel=stacklevel,
-            **kwargs
-        )
-
-    def with_context(self, **context) -> "_BoundContextLogger":
-        """
-        创建带有额外上下文的新日志记录器
-
-        :param context: 要添加的上下文键值对
-        :return: 新的绑定上下文日志记录器
-        """
-        # 合并现有上下文和新上下文
-        new_extra = {**self.extra, **context}
-        return _BoundContextLogger(self.logger, new_extra)
+# class ContextLogger(logging.LoggerAdapter):
+#     """
+#     绑定到特定日志记录器的上下文日志记录器
+#     继承自 logging.LoggerAdapter，提供更贴近底层的实现
+#     """
+#
+#     def __init__(self,
+#                  logger: logging.Logger,
+#                  extra: dict= None,
+#                  stacklevel: int = 3,  # 默认跳过 3 层封装
+#                  ):
+#         """
+#         初始化绑定上下文日志记录器
+#
+#         :param logger: 绑定的日志记录器实例
+#         :param extra: 额外的上下文信息（字典）
+#         :param stacklevel: 默认跳过 3 层封装
+#         """
+#         super().__init__(logger, extra or {})
+#         self.logger = logger
+#         self.extra = extra or {}
+#         self.stacklevel = stacklevel
+#
+#     def process(self, msg: str, kwargs: Dict[str, Any]) -> tuple:
+#         """
+#         处理日志消息和关键字参数，添加上下文信息
+#
+#         重写 LoggerAdapter 的 process 方法
+#         """
+#         # 获取传入的上下文（如果有）
+#         context = kwargs.pop("context", None) or {}
+#
+#         # 合并实例级上下文和本次日志上下文
+#         merged_extra = {**self.extra, **context}
+#
+#         # 构建 extra 字典（添加 ctx_ 前缀）
+#         extra = {}
+#         for key, value in merged_extra.items():
+#             extra[f"ctx_{key}"] = value
+#
+#         # 更新 kwargs 中的 extra
+#         if "extra" in kwargs:
+#             # 合并已有的 extra
+#             kwargs["extra"] = {**kwargs["extra"], **extra}
+#         else:
+#             kwargs["extra"] = extra
+#
+#         return msg, kwargs
+#
+#     def log(
+#             self,
+#             level: int,
+#             msg: str,
+#             context: Optional[Dict[str, Any]] = None,
+#             exc_info: Optional[Union[bool, BaseException]] = None,
+#             stack_info: bool = False,
+#             stacklevel: int = 3,  # 默认跳过 3 层封装
+#             **kwargs
+#     ) -> None:
+#         """
+#         带上下文的日志记录方法
+#
+#         :param level: 日志级别
+#         :param msg: 日志消息
+#         :param context: 本次日志的上下文数据（字典）
+#         :param exc_info: 异常信息（True 或 Exception 实例）
+#         :param stack_info: 是否包含堆栈信息
+#         :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
+#         """
+#         # 确保使用正确的堆栈级别
+#         stacklevel = stacklevel if stacklevel > self.stacklevel else self.stacklevel
+#
+#         # 添加上下文到 kwargs
+#         if context is not None:
+#             kwargs["context"] = context
+#
+#         # 调用底层 logger 的 log 方法
+#         super().log(
+#             level,
+#             msg,
+#             exc_info=exc_info,
+#             stack_info=stack_info,
+#             stacklevel=stacklevel,
+#             **kwargs
+#         )
+#
+#     # 以下方法保持与原有接口兼容
+#     def debug(
+#             self,
+#             msg: str,
+#             context: Optional[Dict[str, Any]] = None,
+#             exc_info: Optional[Union[bool, BaseException]] = None,
+#             stack_info: bool = False,
+#             stacklevel: int = 3,
+#             **kwargs
+#     ) -> None:
+#         """
+#         DEBUG级别带上下文的日志记录
+#
+#         :param msg: 日志消息
+#         :param context: 上下文数据（字典）
+#         :param exc_info: 异常信息（True 或 Exception 实例）
+#         :param stack_info: 是否包含堆栈信息
+#         :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
+#         """
+#         # 设置合适的堆栈级别
+#         stacklevel = stacklevel if stacklevel > self.stacklevel else self.stacklevel
+#
+#         # 添加上下文到 kwargs
+#         if context is not None:
+#             kwargs["context"] = context
+#
+#         super().debug(
+#             msg,
+#             exc_info=exc_info,
+#             stack_info=stack_info,
+#             stacklevel=stacklevel,
+#             **kwargs
+#         )
+#
+#     def info(
+#             self,
+#             msg: str,
+#             context: Optional[Dict[str, Any]] = None,
+#             exc_info: Optional[Union[bool, BaseException]] = None,
+#             stack_info: bool = False,
+#             stacklevel: int = 3,
+#             **kwargs
+#     ) -> None:
+#         """
+#         INFO级别带上下文的日志记录
+#
+#         :param msg: 日志消息
+#         :param context: 上下文数据（字典）
+#         :param exc_info: 异常信息（True 或 Exception 实例）
+#         :param stack_info: 是否包含堆栈信息
+#         :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
+#         """
+#         stacklevel = stacklevel if stacklevel > self.stacklevel else self.stacklevel
+#
+#         if context is not None:
+#             kwargs["context"] = context
+#
+#         super().info(
+#             msg,
+#             exc_info=exc_info,
+#             stack_info=stack_info,
+#             stacklevel=stacklevel,
+#             **kwargs
+#         )
+#
+#     def warning(
+#             self,
+#             msg: str,
+#             context: Optional[Dict[str, Any]] = None,
+#             exc_info: Optional[Union[bool, BaseException]] = None,
+#             stack_info: bool = False,
+#             stacklevel: int = 3,
+#             **kwargs
+#     ) -> None:
+#         """
+#         WARNING级别带上下文的日志记录
+#
+#         :param msg: 日志消息
+#         :param context: 上下文数据（字典）
+#         :param exc_info: 异常信息（True 或 Exception 实例）
+#         :param stack_info: 是否包含堆栈信息
+#         :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
+#         """
+#         stacklevel = stacklevel if stacklevel > self.stacklevel else self.stacklevel
+#
+#         if context is not None:
+#             kwargs["context"] = context
+#
+#         super().warning(
+#             msg,
+#             exc_info=exc_info,
+#             stack_info=stack_info,
+#             stacklevel=stacklevel,
+#             **kwargs
+#         )
+#
+#     def error(
+#             self,
+#             msg: str,
+#             context: Optional[Dict[str, Any]] = None,
+#             exc_info: Optional[Union[bool, BaseException]] = None,
+#             stack_info: bool = False,
+#             stacklevel: int = 3,
+#             **kwargs
+#     ) -> None:
+#         """
+#         ERROR级别带上下文的日志记录
+#
+#         :param msg: 日志消息
+#         :param context: 上下文数据（字典）
+#         :param exc_info: 异常信息（True 或 Exception 实例）
+#         :param stack_info: 是否包含堆栈信息
+#         :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
+#         """
+#         stacklevel = stacklevel if stacklevel > self.stacklevel else self.stacklevel
+#
+#         if context is not None:
+#             kwargs["context"] = context
+#
+#         super().error(
+#             msg,
+#             exc_info=exc_info,
+#             stack_info=stack_info,
+#             stacklevel=stacklevel,
+#             **kwargs
+#         )
+#
+#     def critical(
+#             self,
+#             msg: str,
+#             context: Optional[Dict[str, Any]] = None,
+#             exc_info: Optional[Union[bool, BaseException]] = None,
+#             stack_info: bool = False,
+#             stacklevel: int = 3,
+#             **kwargs
+#     ) -> None:
+#         """
+#         CRITICAL级别带上下文的日志记录
+#
+#         :param msg: 日志消息
+#         :param context: 上下文数据（字典）
+#         :param exc_info: 异常信息（True 或 Exception 实例）
+#         :param stack_info: 是否包含堆栈信息
+#         :param stacklevel: 堆栈级别（设置为 3 跳过封装层）
+#         """
+#         stacklevel = stacklevel if stacklevel > self.stacklevel else self.stacklevel
+#
+#         if context is not None:
+#             kwargs["context"] = context
+#
+#         super().critical(
+#             msg,
+#             exc_info=exc_info,
+#             stack_info=stack_info,
+#             stacklevel=stacklevel,
+#             **kwargs
+#         )
+#
+#     def with_context(self, **context) -> "ContextLogger":
+#         """
+#         创建带有额外上下文的新日志记录器
+#
+#         :param context: 要添加的上下文键值对
+#         :return: 新的绑定上下文日志记录器
+#         """
+#         # 合并现有上下文和新上下文
+#         new_extra = {**self.extra, **context}
+#         return ContextLogger(self.logger, new_extra)
 
 
 # ======================
@@ -579,24 +579,24 @@ def set_log(
 
     :param name: 日志器名称，None 表示根日志器
     :param fpath: 日志文件存放目录路径（默认同目录的logs目录里）
-    :param fname: 日志文件名（默认："{name}.log"）
+    :param fname: 日志文件名（默认: "{name}.log"）
     :param level: 日志级别（默认: 2/INFO）
 
-    :param console_enabled: 是否启用控制台日志（默认：True）
-    :param console_format: 控制台日志格式（默认：结构化文本格式）
+    :param console_enabled: 是否启用控制台日志（默认: True）
+    :param console_format: 控制台日志格式（默认为None: 结构化文本模式）普通文本模式参考使用""空字符串或者自定义
 
-    :param file_enabled: 是否启用文件日志（默认：True）
-    :param file_format: 文件日志格式（默认：详细文本格式）
+    :param file_enabled: 是否启用文件日志（默认: True）
+    :param file_format: 文件日志格式（默认为None: 详细文本格式）普通文本模式参考使用""空字符串或者自定义
 
-    :param json_enabled: 是否启用JSON日志（默认：False）
-    :param json_include_fields: JSON日志包含字段（默认：全部）
-    :param json_exclude_fields: JSON日志排除字段（默认：无）
+    :param json_enabled: 是否启用JSON日志（默认: False）
+    :param json_include_fields: JSON日志包含字段（默认: 全部）
+    :param json_exclude_fields: JSON日志排除字段（默认: 无）
 
-    :param datefmt: 日期格式（默认："%Y-%m-%d %H:%M:%S"）
-    :param maxBytes: 日志文件最大字节数（默认：2MB）
-    :param backupCount: 备份文件数量（默认：3）
-    :param encoding: 文件编码（默认：utf-8）
-    :param force_reconfigure: 强制重新配置现有日志器（默认：False）
+    :param datefmt: 日期格式（默认: "%Y-%m-%d %H:%M:%S"）
+    :param maxBytes: 日志文件最大字节数（默认: 2MB）
+    :param backupCount: 备份文件数量（默认: 3）
+    :param encoding: 文件编码（默认: utf-8）
+    :param force_reconfigure: 强制重新配置现有日志器（默认: False）
 
     :param context_fields: 额外上下文字段（字典格式）
     :param custom_handlers: 自定义日志处理器列表
@@ -630,7 +630,7 @@ def set_log(
     logger.addFilter(context_filter)
 
     # 默认日志格式
-    if console_format is None:
+    if console_format is None:  # 默认结构化文本模式
         console_format = (
                 restrop("[%(asctime)s] ", f=6) +
                 restrop("[%(threadName)s] ", f=5) +
@@ -639,8 +639,16 @@ def set_log(
                 f"%(message)s" +
                 restrop(" %(ctx_dict)s", f=2)  # 只在有上下文时显示
         )
+    if console_format == "":  # 纯文本模式
+        console_format = (
+                restrop("[%(asctime)s] ", f=6) +
+                restrop("[%(threadName)s] ", f=5) +
+                restrop("[%(filename)s:%(lineno)-4d] ", f=4) +
+                restrop("[%(levelname)-7s] ", f=3) +
+                f"%(message)s"
+        )
 
-    if file_format is None:
+    if file_format is None:  # 默认详细文本格式
         file_format = (
                 "[%(asctime)s] " +
                 "[%(threadName)s] " +
@@ -648,6 +656,14 @@ def set_log(
                 "%(levelname)-7s " +
                 "%(message)s" +
                 " %(ctx_dict)s"  # 直接显示字典
+        )
+    if file_format == "":  # 纯文本模式
+        file_format = (
+                "[%(asctime)s] " +
+                "[%(threadName)s] " +
+                "[%(filename)s:%(lineno)d] " +
+                "%(levelname)-7s " +
+                "%(message)s"
         )
 
     # 创建控制台处理器（如果启用）
@@ -659,7 +675,7 @@ def set_log(
     # 创建文件处理器（如果启用）
     if file_enabled and fpath:
         # 确定日志文件名
-        log_name = make_filename(name, fname=fname, suffix=".log")
+        log_name = generate_filename(name, fname=fname, suffix=".log")
         logfile = os.path.join(fpath, log_name)
 
         # 确保日志文件存在
@@ -687,7 +703,7 @@ def set_log(
     # 创建JSON日志处理器（如果启用）
     if json_enabled:
         # 确定JSON日志文件名
-        json_log_name = make_filename(name, fname=fname, suffix=".json.log")
+        json_log_name = generate_filename(name, fname=fname, suffix=".json.log")
         json_logfile = os.path.join(fpath, json_log_name)
 
         # 确保日志文件存在
@@ -742,18 +758,19 @@ def set_log(
     return logger
 
 
-def bind_logger(logger: logging.Logger, **context) -> "_BoundContextLogger":
-    """
-    创建绑定到指定日志记录器的上下文日志记录器
-
-    >>> from hzgt import set_log, bind_logger
-    >>> testlogger = set_log("test", fpath="logs")
-    >>> testlogger.info("Hello World")
-    >>> blogger = bind_logger(testlogger)
-    >>> blogger.info("Test info 2", context={"anything": "context"})
-
-    :param logger: 要绑定的日志记录器实例
-    :param context: 初始上下文信息（可选）
-    :return: 绑定后的上下文日志记录器
-    """
-    return _BoundContextLogger(logger, context)
+# def bind_logger(logger: logging.Logger, context: dict = None, stacklevel: int = 3) -> "ContextLogger":
+#     """
+#     创建绑定到指定日志记录器的上下文日志记录器
+#
+#     >>> from hzgt import set_log, bind_logger
+#     >>> testlogger = set_log("test", fpath="logs")
+#     >>> testlogger.info("Hello World")
+#     >>> blogger = bind_logger(testlogger)
+#     >>> blogger.info("Test info 2", context={"anything": "context"})
+#
+#     :param logger: 要绑定的日志记录器实例
+#     :param context: 初始上下文信息（可选）
+#     :param stacklevel: 默认跳过 3 层封装
+#     :return: 绑定后的上下文日志记录器
+#     """
+#     return ContextLogger(logger, context, stacklevel=stacklevel)

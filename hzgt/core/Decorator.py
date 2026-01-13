@@ -1,8 +1,41 @@
 # -*- coding: utf-8 -*-
 
 import datetime
-import logging
 from functools import wraps
+
+
+# 通用适配器，使任何装饰器都支持两种调用方式
+def dual_support(decorator_factory):
+    """
+    装饰器
+
+    将普通装饰器工厂转换为支持 @decorator 和 @decorator() 两种用法的装饰器
+
+    >>> from hzgt import dual_support
+    >>>
+    >>> @ dual_support
+    >>> def my_decorator(*arg, **kargs):
+    ...     pass
+    >>>
+    """
+
+    @wraps(decorator_factory)
+    def wrapper(*args, **kwargs):
+        # 如果没有参数且第一个参数是可调用对象，则使用默认参数
+        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+            # 使用默认参数
+            import inspect
+            sig = inspect.signature(decorator_factory)
+            defaults = {}
+            for param_name, param in sig.parameters.items():
+                if param.default is not inspect.Parameter.empty:
+                    defaults[param_name] = param.default
+            return decorator_factory(**defaults)(args[0])
+        # 否则，正常调用装饰器工厂
+        return decorator_factory(*args, **kwargs)
+
+    return wrapper
+
 
 def vargs(valid_params: dict):
     """
@@ -75,14 +108,16 @@ __indent_logger = __IndentLogger()
 del __IndentLogger
 
 
+@dual_support
 @vargs({"precision": [i for i in range(0, 10)]})
-def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
+def gettime(precision=6, date_format='%Y-%m-%d %H:%M:%S.%f'):
     """
     打印函数执行的时间
     :param precision: int 时间精度 范围为 0 到 9
     :param date_format: 时间格式
     :return:
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             start_time = datetime.datetime.now()
@@ -90,7 +125,7 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
             module_name = func.__module__
             func_name = func.__name__
 
-            __indent_logger.log(f"开始时间 {start_str} {module_name}.{func_name}")
+            __indent_logger.log(f"\n开始时间 {start_str} {module_name}.{func_name}")
             __indent_logger.inc_indent()
             try:
                 result = func(*args, **kwargs)
@@ -107,4 +142,3 @@ def gettime(precision=2, date_format='%Y-%m-%d %H:%M:%S'):
         return wrapper
 
     return decorator
-
