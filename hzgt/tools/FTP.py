@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import ftplib
-import logging
 import os
 import time
 
@@ -10,7 +9,7 @@ from pyftpdlib.handlers import FTPHandler, ThrottledDTPHandler
 from pyftpdlib.servers import FTPServer
 from tqdm import trange
 
-from hzgt.core.fileop import getfsize, bitconv, format_filename
+from hzgt.core.fileop import getfsize, format_filename
 from hzgt.core.log import set_log
 from hzgt.core.strop import restrop
 
@@ -180,23 +179,23 @@ class Ftpserver:
         self.__handler.dtp_handler = dtp_handler
 
         # 监听ip和端口 linux需要root用户才能使用21端口
-        self.server = FTPServer((host_res, port), self.__handler)
+        self.__server = FTPServer((host_res, port), self.__handler)
 
         # 最大连接数
-        self.server.max_cons = max_cons
-        self.server.max_cons_per_ip = max_cons_per_ip
+        self.__server.max_cons = max_cons
+        self.__server.max_cons_per_ip = max_cons_per_ip
         print(f"HOST & PORT: {restrop(host_res)} {restrop(port, f=2)}")
         # 开始服务
-        self.server.serve_forever()
+        self.__server.serve_forever()
 
     def shutdown(self):
         """
         关闭服务器
         :return:
         """
-        self.server.close_all()
-        self.server.close()
-        # self.server.shutdown()
+        self.__server.close_all()
+        self.__server.close()
+        # self.__server.shutdown()
 
 
 class Ftpclient:
@@ -212,10 +211,10 @@ class Ftpclient:
         :param encoding: 默认编码为 UTF-8
         """
         username = username if username else "anonymous"
-        self.ftpc = ftplib.FTP()
-        self.ftpc.encoding = encoding
-        self.ftpc.connect(host, int(port))
-        self.ftpc.login(username, password)
+        self.__ftpc = ftplib.FTP()
+        self.__ftpc.encoding = encoding
+        self.__ftpc.connect(host, int(port))
+        self.__ftpc.login(username, password)
         print(f"`{restrop(username, f=4)}` 登陆FTP服务器 `{restrop(host)}`")
 
     def __enter__(self):
@@ -232,8 +231,8 @@ class Ftpclient:
         :param args:
         :return:
         """
-        print("========== " + restrop("当前工作目录:", f=2) + " " + restrop(self.ftpc.pwd(), f=4))
-        self.ftpc.dir(*args)
+        print("========== " + restrop("当前工作目录:", f=2) + " " + restrop(self.__ftpc.pwd(), f=4))
+        self.__ftpc.dir(*args)
         print("========== ==========")
 
     def pwd(self):
@@ -242,7 +241,7 @@ class Ftpclient:
 
         :return: 返回当前的工作目录
         """
-        return self.ftpc.pwd()
+        return self.__ftpc.pwd()
 
     def quit(self):
         """
@@ -250,7 +249,7 @@ class Ftpclient:
 
         :return:
         """
-        self.ftpc.quit()
+        self.__ftpc.quit()
 
     def getfile(self, server_filename: str, savepath: str = "FTP_Files", savename: str = "", blocksize: int = 8 * 1024):
         """
@@ -281,8 +280,8 @@ class Ftpclient:
                 file_handle.write(data)
                 tbar.update(len(data))  # 更新进度条
 
-            self.ftpc.retrbinary(f"RETR {server_filename}", callback=_callback,
-                                 blocksize=blocksize)  # 接收服务器上文件并写入本地文件
+            self.__ftpc.retrbinary(f"RETR {server_filename}", callback=_callback,
+                                   blocksize=blocksize)  # 接收服务器上文件并写入本地文件
 
     def upload(self, local_file: str, server_savename: str = "", blocksize: int = 8 * 1024):
         """
@@ -308,8 +307,8 @@ class Ftpclient:
             def _callback(data):
                 tbar.update(len(data))  # 更新进度条
 
-            self.ftpc.storbinary(f"STOR {server_savename}", file_handle,
-                                 blocksize=blocksize, callback=_callback)
+            self.__ftpc.storbinary(f"STOR {server_savename}", file_handle,
+                                   blocksize=blocksize, callback=_callback)
 
     def size(self, sname: str):
         """
@@ -318,8 +317,8 @@ class Ftpclient:
         :param sname: 目标文件
         :return:
         """
-        self.ftpc.voidcmd('TYPE I')
-        return self.ftpc.size(sname)
+        self.__ftpc.voidcmd('TYPE I')
+        return self.__ftpc.size(sname)
 
     def list_show(self, spath: str = ""):
         """
@@ -331,7 +330,7 @@ class Ftpclient:
         spath = spath if spath else self.pwd()  # 默认查看当前工作目录的文件列表
 
         print("========== " + restrop("目录文件列表: ", f=2) + " " + restrop(spath, f=4))
-        self.ftpc.retrlines('LIST ' + spath)
+        self.__ftpc.retrlines('LIST ' + spath)
         print("========== ==========")
 
     def nlst(self, spath: str):
@@ -341,7 +340,7 @@ class Ftpclient:
         :param spath: 目标目录
         :return: list 所有 文件夹 / 文件 组成的 list
         """
-        return self.ftpc.nlst(spath)
+        return self.__ftpc.nlst(spath)
 
     def rmd(self, spath: str):
         """
@@ -350,7 +349,7 @@ class Ftpclient:
         :param spath: 目标目录
         :return:
         """
-        return self.ftpc.rmd(spath)
+        return self.__ftpc.rmd(spath)
 
     def delete(self, sname: str):
         """
@@ -359,7 +358,7 @@ class Ftpclient:
         :param sname: 远程文件名
         :return:
         """
-        return self.ftpc.delete(sname)
+        return self.__ftpc.delete(sname)
 
     def rename(self, oldsname: str, newsname: str):
         """
@@ -369,7 +368,7 @@ class Ftpclient:
         :param newsname: 新文件名
         :return:
         """
-        return self.ftpc.rename(oldsname, newsname)
+        return self.__ftpc.rename(oldsname, newsname)
 
     def cwd(self, spath):
         """
@@ -378,7 +377,7 @@ class Ftpclient:
         :param spath: 需要设置为当前工作路径的路径
         :return:
         """
-        self.ftpc.cwd(spath)  # 设置FTP当前操作的路径
+        self.__ftpc.cwd(spath)  # 设置FTP当前操作的路径
 
     def mkd(self, spath):
         """
@@ -387,7 +386,7 @@ class Ftpclient:
         :param spath: 新目录
         :return:
         """
-        return self.ftpc.mkd(spath)
+        return self.__ftpc.mkd(spath)
 
 
 __all__ = ["Ftpserver", "Ftpclient"]

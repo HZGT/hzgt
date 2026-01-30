@@ -14,17 +14,17 @@ from .log import set_log
 from .ipss import getip, validate_ip
 
 # 自动配置类
-from .autoconfig import AutoConfig
+from .autoconfig import ConditionalDefault, AutoConfig
 
 # cmd
-from .cmdutils import is_admin, require_admin, execute_command, run_as_admin, check_admin_and_prompt
+from .sysutils import is_admin, require_admin, execute_command, run_as_admin, check_admin_and_prompt
 
 __all__ = [
     "pic", "restrop",
     "bitconv", "getfsize", "ensure_file", "generate_filename",
     "gettime", "vargs", "dual_support",
-    "set_log", "bind_logger",
+    "set_log", 
     "getip", "validate_ip",
-    "AutoConfig",
+    "ConditionalDefault", "AutoConfig",
     "is_admin", "require_admin", "execute_command", "run_as_admin", "check_admin_and_prompt",
 ]

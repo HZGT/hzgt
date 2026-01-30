@@ -1,4 +1,4 @@
 git add .
-git commit -m "Expand the function called getip()"
+git commit -m "update md"
 git push
 pause

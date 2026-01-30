@@ -49,7 +49,7 @@ class SQLiteAdapter(DBAdapter):
             conn.row_factory = sqlite3.Row
 
             if self.logger:
-                self.logger.debug(f"SQLite数据库连接已建立: {self.db_name}")
+                self.logger.debug(f"SQLite数据库连接已建立: {self.db_name}", stacklevel=4)
             return conn
         except sqlite3.Error as e:
             if self.logger:
@@ -989,7 +989,7 @@ class SQLiteop(SQLutilop):
                 for index_sql in index_sqls:
                     self.execute(index_sql)
 
-            self.logger.info(f"表 {table_name} 创建成功")
+            self.logger.info(f"表 {table_name} 创建成功", stacklevel=4)
             self.select_table(table_name)
         except sqlite3.Error as e:
             self.logger.error(f"创建表 {table_name} 失败: {e}")

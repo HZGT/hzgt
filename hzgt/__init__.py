@@ -9,7 +9,7 @@ from .core import (pic, restrop,
                    gettime, vargs, dual_support,
                    set_log,
                    getip, validate_ip,
-                   AutoConfig,
+                   ConditionalDefault, AutoConfig,
                    is_admin, require_admin, execute_command, run_as_admin, check_admin_and_prompt
                    )
 
@@ -20,6 +20,6 @@ __all__ = [
     "gettime", "vargs", "dual_support",
     "set_log",
     "getip", "validate_ip",
-    "AutoConfig",
+    "ConditionalDefault", "AutoConfig",
     "is_admin", "require_admin", "execute_command", "run_as_admin", "check_admin_and_prompt",
 ]
