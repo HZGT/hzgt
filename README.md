@@ -8,11 +8,11 @@ hzgt 是一个功能丰富的 Python 工具库，提供了多种实用工具和�
 
 ```
 hzgt/
-├── __init__.py              # 主包初始化文件
+├── __init__.py              # 主要导入core
 ├── __version/               # 版本信息
 │   ├── __init__.py
 │   └── version.txt
-├── core/                    # 核心功能模块
+├── core/                    # 核心功能模块 from hzgt import ~
 │   ├── CONST.py             # 常量定义
 │   ├── Decorator.py         # 装饰器
 │   ├── __init__.py
@@ -22,7 +22,7 @@ hzgt/
 │   ├── ipss.py              # IP地址工具
 │   ├── log.py               # 日志管理
 │   └── strop.py             # 字符串操作
-├── tools/                   # 工具模块
+├── tools/                   # 工具模块 from hzgt.tools import ~
 │   ├── SQL/                 # SQL数据库操作
 │   │   ├── sqlcore/         # SQL核心功能
 │   │   ├── MYSQL.py         # MySQL操作
