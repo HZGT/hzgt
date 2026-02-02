@@ -1,3 +1,4 @@
+
 import typing as t
 
 import click
@@ -85,6 +86,8 @@ click.formatting.wrap_text = __wrap_text
 # -*- coding: utf-8 -*-
 
 import os
+import signal
+import sys
 
 from .__version import __version__ as hzgt_version
 from .tools import Ftpserver, Fileserver
@@ -115,7 +118,7 @@ def print_version(ctx, param, value):
               help='显示版本信息')
 def __losf():
     """HZGT 工具箱"""
-    pass  # 无需任何逻辑
+    pass
 
 
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -123,7 +126,7 @@ def __losf():
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 @click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")  # epilog 末尾额外信息
 @click.argument('directory', default=os.getcwd(), type=click.STRING)
-@click.option("-r", "--res", default=getip(-1), type=click.STRING, help="选填- IP地址", show_default=True)
+@click.option("-r", "--res", default=getip(-1, family="ipv4"), type=click.STRING, help="选填- IP地址", show_default=True)
 @click.option("-p", "--port", default=5001, type=click.INT, help="选填- 端口", show_default=True)
 @click.option("-pe", "--perm", default="elradfmwMT", type=click.STRING, help="选填- 权限", show_default=True)
 @click.option("-u", "--user", default=CURRENT_USERNAME, type=click.STRING, help="选填- 用户名", show_default=True)
@@ -182,7 +185,7 @@ def ftps(directory, res, port, perm, user, password):
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 @click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")
 @click.argument('directory', default=os.getcwd(), type=click.STRING, required=False)
-@click.option("-r", "--res", default=getip(-1), type=click.STRING,
+@click.option("-r", "--res", default=getip(-1, family="ipv4"), type=click.STRING,
               help="选填- IP地址 或者在 `hzgt ips` 命令长度之间(如需输入负数, 使用`-- -3`的方式)", show_default=True)
 @click.option("-p", "--port", default=9090, type=click.INT, help="选填- 端口", show_default=True)
 def fs(directory, res, port):
