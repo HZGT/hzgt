@@ -161,10 +161,10 @@ client.getfile("remote.txt", "local_copy.txt")
 #### 文件服务器
 
 ```python
-from hzgt.tools import Fileserver
+from hzgt.tools import file_server
 
 # 启动文件服务器
-Fileserver("path/to/files", "0.0.0.0", 8000)
+file_server("path/to/files", "0.0.0.0", 8000)
 ```
 
 #### 邮件发送

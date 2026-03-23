@@ -11,7 +11,7 @@ from .REGISTER import Func_Register, Class_Register
 from .FTP import Ftpserver, Ftpclient
 
 # 文件服务器
-from .FileServer import Fileserver
+from .Fileop import file_server
 
 # 读取ini文件 / 保存ini文件
 from .INI import readini, saveini
@@ -29,7 +29,7 @@ __all__ = TOOLS_ALL = ['Mqttop',
 
                        'Ftpserver', 'Ftpclient',
 
-                       'Fileserver',
+                       'file_server',
 
                        'readini', 'saveini',
 

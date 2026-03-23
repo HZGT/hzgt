@@ -79,15 +79,16 @@ ensure_file("/path/to/new/directory/file.txt")
 **返回值**：`str` - 正确的文件名（确保以指定的 suffix 结尾）
 
 **使用示例**：
+
 ```python
-from hzgt import generate_filename
+from hzgt import ensure_suffix
 
 # 使用基础名称生成文件名
-print(generate_filename("test"))          # 输出：test.log
+print(ensure_suffix("test"))  # 输出：test.log
 
 # 使用自定义文件名
-print(generate_filename("test", "data.txt"))  # 输出：data.log
+print(ensure_suffix("test", "data.txt"))  # 输出：data.log
 
 # 使用自定义后缀
-print(generate_filename("test", suffix=".csv"))  # 输出：test.csv
+print(ensure_suffix("test", suffix=".csv"))  # 输出：test.csv
 ```

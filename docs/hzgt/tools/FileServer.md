@@ -23,31 +23,31 @@
 **使用示例**：
 
 ```python
-from hzgt.tools import Fileserver
+from hzgt.tools import file_server
 
 # 在当前目录启动文件服务器
-Fileserver()
+file_server()
 
 # 在指定目录启动文件服务器，使用指定端口
-Fileserver(path="/path/to/share", port=8080)
+file_server(path="/path/to/share", port=8080)
 
 # 在指定IP和端口启动文件服务器
-Fileserver(host="192.168.1.100", port=8080)
+file_server(host="192.168.1.100", port=8080)
 
 # 启用HTTPS的文件服务器
-Fileserver(bool_https=True, certfile="server.crt", keyfile="server.key")
+file_server(bool_https=True, certfile="server.crt", keyfile="server.key")
 ```
 
 **完整使用示例**：
 
 ```python
-from hzgt.tools import Fileserver
+from hzgt.tools import file_server
 
 print("启动文件服务器...")
 print("使用 Ctrl+C 停止服务器")
 
 # 启动文件服务器
-server = Fileserver(
+server = file_server(
     path=".",  # 共享当前目录
     host="0.0.0.0",  # 允许所有网络接口访问
     port=5001  # 使用5001端口

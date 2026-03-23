@@ -1,9 +1,11 @@
 import ctypes
+import io
+import locale
 import os
 import subprocess
 import sys
 import threading
-from typing import Generator, Union, Optional, List
+from typing import Union, List, Generator, Optional
 
 
 def is_admin() -> bool:
@@ -20,230 +22,193 @@ def is_admin() -> bool:
         else:
             # Unix/Linux/macOS系统：检查是否为root用户
             return os.geteuid() == 0
-    except AttributeError:
-        # 如果无法检查权限，默认返回False
-        return False
     except Exception:
         # 其他异常情况，默认返回False
         return False
 
 
-def require_admin(message: Optional[str] = None) -> None:
-    """
-    请求以管理员权限重新运行程序
-
-    Args:
-        message: 可选的提示信息，用于告知用户为什么需要管理员权限
-    """
-    if is_admin():
-        # 已经是管理员权限，无需操作
-        return
-
-    # 显示提示信息
-    if message:
-        print(f"需要管理员权限: {message}")
-    else:
-        print("此操作需要管理员权限，正在请求提权...")
-
-    try:
-        if sys.platform.startswith('win'):
-            # Windows系统：使用UAC请求提权
-            _require_admin_windows()
-        else:
-            # Unix/Linux/macOS系统：提示用户使用sudo
-            _require_admin_unix()
-    except Exception as e:
-        print(f"请求管理员权限失败: {e}")
-        sys.exit(1)
+# Windows 内部命令白名单
+if sys.platform.startswith('win'):
+    WINDOWS_INTERNAL_CMDS = {
+        'echo', 'dir', 'cd', 'type', 'copy', 'del', 'erase', 'ren', 'rename',
+        'md', 'mkdir', 'rd', 'rmdir', 'cls', 'color', 'date', 'time', 'ver',
+        'vol', 'path', 'prompt', 'set', 'title', 'pushd', 'popd', 'shift',
+        'exit', 'pause', 'start', 'assoc', 'ftype', 'tree', 'where', 'for', 'if', 'rem'
+    }
 
 
-def _require_admin_windows() -> None:
-    """Windows系统下请求管理员权限"""
-    try:
-        # 重新启动程序并请求UAC提权
-        result = ctypes.windll.shell32.ShellExecuteW(
-            None,  # hwnd
-            'runas',  # lpOperation - 以管理员身份运行
-            sys.executable,  # lpFile - Python解释器路径
-            ' '.join(sys.argv),  # lpParameters - 命令行参数
-            None,  # lpDirectory
-            1  # nShowCmd - SW_SHOWNORMAL
-        )
+class _StderrCollector:
+    """后台收集 stderr 输出"""
 
-        # ShellExecuteW返回值大于32表示成功
-        if result > 32:
-            print("正在以管理员权限重新启动程序...")
-            sys.exit(0)  # 结束当前非提权进程
-        else:
-            raise RuntimeError(f"UAC提权失败，错误代码: {result}")
+    def __init__(self, stderr_pipe, encoding, errors):
+        self.stderr_pipe = stderr_pipe
+        self.encoding = encoding
+        self.errors = errors
+        self.lines = []
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._collect, daemon=True)
+        self._thread.start()
 
-    except Exception as e:
-        raise RuntimeError(f"Windows UAC提权失败: {e}")
+    def _collect(self):
+        try:
+            reader = io.TextIOWrapper(
+                self.stderr_pipe,
+                encoding=self.encoding,
+                errors=self.errors,
+                newline=''
+            )
+            for line in reader:
+                if self._stop_event.is_set():
+                    break
+                self.lines.append(line.rstrip('\r\n'))
+        except (ValueError, OSError):
+            # 管道可能已关闭
+            pass
 
+    def stop(self):
+        self._stop_event.set()
+        # 关闭管道以释放线程
+        if self.stderr_pipe:
+            try:
+                self.stderr_pipe.close()
+            except:
+                pass
+        if self._thread.is_alive():
+            self._thread.join(timeout=1)
 
-def _require_admin_unix() -> None:
-    """Unix/Linux/macOS系统下请求管理员权限"""
-    print("请使用sudo运行此程序以获取管理员权限:")
-    print(f"sudo {' '.join(sys.argv)}")
-    sys.exit(1)
-
-
-def run_as_admin(func):
-    """
-    装饰器：确保被装饰的函数以管理员权限运行
-
-    Args:
-        func: 需要管理员权限的函数
-
-    Returns:
-        装饰后的函数
-    """
-
-    def wrapper(*args, **kwargs):
-        if not is_admin():
-            require_admin(f"函数 '{func.__name__}' 需要管理员权限")
-        return func(*args, **kwargs)
-
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
-    return wrapper
+    def get_stderr(self):
+        return '\n'.join(self.lines)
 
 
-def check_admin_and_prompt(operation_name: str = "此操作") -> bool:
-    """
-    检查管理员权限并提示用户
-
-    Args:
-        operation_name: 操作名称，用于提示信息
-
-    Returns:
-        bool: 是否具有管理员权限
-    """
-    if is_admin():
-        return True
-    else:
-        print(f"警告: {operation_name}需要管理员权限才能执行")
-        if sys.platform.startswith('win'):
-            print("请以管理员身份重新运行此程序")
-        else:
-            print("请使用sudo重新运行此程序")
-        return False
-
-
-def execute_command(
+def run_cmd(
         _cmd: Union[str, List[str]],
         encoding: Optional[str] = None,
         errors: str = 'replace',
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        merge_stderr: bool = True,
+        check: bool = True
 ) -> Generator[str, None, None]:
     """
-    执行命令并返回生成器，逐行输出结果
+    执行命令并返回生成器，逐行输出结果（不包括换行符）。
 
     Args:
-        _cmd: 要执行的命令，可以是字符串或字符串列表
-        encoding: 输出编码，默认为系统默认编码
-        errors: 编码错误处理方式，默认为'replace'
-        timeout: 超时时间（秒），None表示无超时限制
+        _cmd: 要执行的命令，可以是字符串或字符串列表。
+        encoding: 输出编码，默认为系统区域设置编码（locale.getpreferredencoding）。
+        errors: 编码错误处理方式，默认为'replace'。
+        timeout: 超时时间（秒），None表示无超时限制。超时后已输出的行仍会 yield，
+                 然后抛出 TimeoutError。
+        merge_stderr: 是否将 stderr 合并到 stdout 输出流。
+                      - True: stderr 与 stdout 混合输出（默认）。
+                      - False: stderr 被完全忽略（重定向到 os.devnull），
+                                但会在命令失败时附加到异常消息中。
+        check: 是否检查返回码，默认为 True。若为 True，当命令返回非零退出码时抛出 Exception。
 
     Yields:
-        str: 命令输出的每一行
+        str: 命令输出的每一行（已去除末尾换行符）。
 
     Raises:
-        subprocess.TimeoutExpired: 命令执行超时
-        subprocess.CalledProcessError: 命令执行失败
-        FileNotFoundError: 命令不存在
+        TimeoutError: 命令执行超时（超时前已输出的行仍会被 yield），异常消息包含 stderr（若收集到）。
+        Exception: 命令执行失败（返回码非0）且 check=True，异常消息包含返回码、命令和 stderr（若收集到）。
     """
-    # 设置默认编码
     if encoding is None:
-        encoding = sys.getdefaultencoding()
+        encoding = locale.getpreferredencoding(False) or sys.getdefaultencoding()
 
-    # 处理命令格式
+    # 处理 Windows 内部命令的列表形式
+    if isinstance(_cmd, list) and sys.platform.startswith('win'):
+        if _cmd[0].lower() in WINDOWS_INTERNAL_CMDS:
+            _cmd = ['cmd', '/c'] + _cmd
+
     if isinstance(_cmd, str):
-        # 如果是字符串，在Windows上需要shell=True
-        shell = sys.platform.startswith('win')
-        command = _cmd
+        use_shell = sys.platform.startswith('win')
+        cmd_args = _cmd
     else:
-        # 如果是列表，不需要shell
-        shell = False
-        command = _cmd
+        use_shell = False
+        cmd_args = _cmd
 
-    process = None
+    # 配置标准错误处理
+    if merge_stderr:
+        stderr_target = subprocess.STDOUT
+        stderr_collector = None
+    else:
+        stderr_target = subprocess.PIPE
+        stderr_collector = None  # 稍后创建
+
+    # 启动进程
+    process: subprocess.Popen = subprocess.Popen(
+        cmd_args,
+        stdout=subprocess.PIPE,
+        stderr=stderr_target,
+        shell=use_shell,
+        universal_newlines=False,
+        bufsize=-1,
+    )
+
+    # 如果需要单独收集 stderr，创建收集器
+    if not merge_stderr:
+        stderr_collector = _StderrCollector(process.stderr, encoding, errors)
+
+    timeout_event = threading.Event()
     timer = None
 
+    def timeout_handler():
+        timeout_event.set()
+        process.terminate()
+
+    if timeout is not None:
+        timer = threading.Timer(timeout, timeout_handler)
+        timer.daemon = True
+        timer.start()
+
     try:
-        # 启动进程
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # 将stderr重定向到stdout
-            shell=shell,
-            universal_newlines=False,  # 使用二进制模式
-            bufsize=1  # 行缓冲
+        text_stream = io.TextIOWrapper(
+            process.stdout,
+            encoding=encoding,
+            errors=errors,
+            newline=''
         )
 
-        # 设置超时定时器
-        if timeout is not None:
-            def timeout_handler():
-                if process and process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)  # 等待5秒让进程优雅退出
-                    except subprocess.TimeoutExpired:
-                        process.kill()  # 强制杀死进程
+        for line in text_stream:
+            yield line.rstrip('\r\n')
 
-            timer = threading.Timer(timeout, timeout_handler)
-            timer.start()
-
-        # 逐行读取输出
-        while True:
-            # 读取一行输出
-            line = process.stdout.readline()
-
-            if not line:
-                # 没有更多输出，检查进程是否结束
-                if process.poll() is not None:
-                    break
-                continue
-
-            # 解码并返回
-            try:
-                decoded_line = line.decode(encoding, errors=errors).rstrip('\r\n')
-                if decoded_line:  # 只返回非空行
-                    yield decoded_line
-            except UnicodeDecodeError as e:
-                # 如果解码失败，返回错误信息
-                yield f"[解码错误: {str(e)}]"
-
-        # 等待进程结束
         return_code = process.wait()
 
-        # 检查返回码
-        if return_code != 0:
-            error_msg = f"命令执行失败，返回码: {return_code}"
-            yield f"[错误: {error_msg}]"
+        if timeout_event.is_set():
+            # 超时后确保进程退出
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            cmd_str = cmd_args if isinstance(cmd_args, str) else ' '.join(cmd_args)
+            stderr_msg = ''
+            if stderr_collector:
+                stderr_msg = f"\nstderr:\n{stderr_collector.get_stderr()}"
+            raise TimeoutError(f"命令执行超时 ({timeout}秒): [{cmd_str}]\n{stderr_msg}\n")
 
-    except subprocess.TimeoutExpired:
-        yield f"[错误: 命令执行超时 ({timeout}秒)]"
+        if check and return_code != 0:
+            cmd_str = cmd_args if isinstance(cmd_args, str) else ' '.join(cmd_args)
+            stderr_msg = ''
+            if stderr_collector:
+                stderr_msg = f"\nstderr:\n{stderr_collector.get_stderr()}"
+            raise Exception(f"命令执行失败，返回码 {return_code}: [{cmd_str}]\n{stderr_msg}\n")
+
+    except (GeneratorExit, KeyboardInterrupt):
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
         raise
-
-    except FileNotFoundError:
-        yield "[错误: 命令不存在或无法找到]"
-        raise
-
-    except Exception as e:
-        yield f"[错误: {str(e)}]"
-        raise
-
     finally:
-        # 清理资源
-        if timer:
+        if timer is not None:
             timer.cancel()
-
-        if process:
-            # 确保进程被正确关闭
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
+        if stderr_collector:
+            stderr_collector.stop()
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()

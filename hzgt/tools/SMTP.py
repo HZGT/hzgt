@@ -7,7 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Union, Iterable
 
-from hzgt.core.log import set_log
+from ..core.log import set_log
 
 
 class Smtpop:

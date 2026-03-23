@@ -14,13 +14,12 @@ import threading
 import traceback
 import urllib
 import urllib.parse
-from email.header import Header
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingTCPServer, ThreadingMixIn
 
 from .INI import readini
-from ..core.ipss import validate_ip, getip
+from ..core.ipss import getip, get_server_urls, AddressFamily
 
 
 def _ul_li_css(_ico_base64):
@@ -28,7 +27,7 @@ def _ul_li_css(_ico_base64):
     body {{
         background-color: #808080;
     }}
-    
+
     .header-container {{
         position: fixed;
         top: 0;
@@ -53,7 +52,7 @@ def _ul_li_css(_ico_base64):
         justify-content: flex-end;
         align-items: flex-start;
     }}
-    
+
     input[type = "file"] {{
         display: inline-block;
         background-color: #c0c0c0;
@@ -64,7 +63,7 @@ def _ul_li_css(_ico_base64):
         cursor: pointer;
         max-width: 170px;
     }}
-    
+
     .clear-input {{
         display: inline-block;
         background-color: red;
@@ -78,7 +77,7 @@ def _ul_li_css(_ico_base64):
         background-color: #218838;
         box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
     }}
-    
+
     .upload-button {{
         background-color: #28a745;
         color: black;
@@ -91,7 +90,7 @@ def _ul_li_css(_ico_base64):
         background-color: #218838;
         box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
     }}
-    
+
     :root {{
         --icon-size: 48px;
     }}
@@ -103,7 +102,7 @@ def _ul_li_css(_ico_base64):
         margin: 0;
         z-index: 2;
     }}
-    
+
 
     ul.custom-list {{
         list-style: none;
@@ -126,19 +125,19 @@ def _ul_li_css(_ico_base64):
         color: #ff6900;
         background-color: #f0f000; /* 悬停时的背景色 */
         text-decoration: underline; /* 悬停时添加下划线 */
-        
+
         animation: li_hover_animation 1s;
     }}
     @keyframes li_hover_animation {{
         from {{ background-color: #ffffff; }}
         to {{ background-color: #f0f000; }}
     }}
-    
+
     li:active {{
         color: #0066cc;
         background-color: #c0c0c0;
     }}
-    
+
     li {{
         flex: 1 0 auto;
         margin: 1%; /* 增加li元素之间的间距 */
@@ -151,13 +150,13 @@ def _ul_li_css(_ico_base64):
         cursor: pointer;
         z-index: 0;
     }}
-    
+
     li a {{
         display: block;
         padding: 3px;
         text-decoration: none;
     }}
-    
+
 """
 
 
@@ -166,11 +165,11 @@ def _ul_li_js():
     var rtpathdivElement = document.getElementById('rtpath');
     // 设置元素的style的display属性为none来隐藏div
     rtpathdivElement.style.display = 'none';
-    
+
     const ul = document.querySelector('ul');
     const items = document.querySelectorAll('li');
     const loadThreshold = 0.5; // 当元素进入视口50%时加载
-    
+
     const observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
             if (entry.isIntersecting) {
@@ -182,11 +181,11 @@ def _ul_li_js():
         rootMargin: '0px',
         threshold: loadThreshold
     });
-    
+
     items.forEach((item) => {
         observer.observe(item);
     });
-    
+
     const ulcl = document.querySelector('ul.custom-list');
     ulcl.addEventListener('click', function (event) {
         const target = event.target;
@@ -200,7 +199,7 @@ def _ul_li_js():
             link.click();
         }
     });
-    
+
     document.addEventListener('DOMContentLoaded', function () {
         const listItems = document.querySelectorAll('ul.custom-list li');
         listItems.forEach((item) => {
@@ -212,14 +211,14 @@ def _ul_li_js():
             }
         });
     });
-    
+
     document.addEventListener('DOMContentLoaded', function () {
         const h1Element = document.querySelector('div.header-container');
         const h1Height = h1Element.offsetHeight;
         const ulElement = document.querySelector('ul.custom-list');
         ulElement.style.marginTop = `${h1Height + 20}px`;
     });
-    
+
     const uploadForm = document.getElementById('uploadForm');
     const fileInput = document.getElementById('file-input');
     const uploadProgress = document.getElementById('uploadProgress');
@@ -227,19 +226,19 @@ def _ul_li_js():
     let totalSize = 0;
     let uploadedSizes = []; // 存储每个文件的上传进度
     let completedCount = 0; // 完成上传的文件数
-    
+
     function formatSize(size) {
         return size >= 1024 * 1024 
             ? `${(size / (1024 * 1024)).toFixed(2)}MB` 
             : `${(size / 1024).toFixed(2)}KB`;
     }
-    
+
     function updateProgress() {
         const totalUploaded = uploadedSizes.reduce((acc, cur) => acc + cur, 0);
         const percent = Math.min(100, (totalUploaded / totalSize * 100).toFixed(2));
         const totalSizeFormatted = formatSize(totalSize);
         const uploadedFormatted = formatSize(totalUploaded);
-        
+
         fileUploadpg.textContent = `${percent}% [${uploadedFormatted}/${totalSizeFormatted}]`;
         uploadProgress.value = percent;
     }
@@ -248,22 +247,22 @@ def _ul_li_js():
         const files = fileInput.files;
         completedCount = 0;
         uploadedSizes = new Array(files.length).fill(0);
-        
+
         Array.from(files).forEach((file, index) => {
             const xhr = new XMLHttpRequest();
             const formData = new FormData();
             const path = document.getElementById('rtpath').textContent;
-    
+
             formData.append('file', file);
             formData.append('filename', path + file.name);
-    
+
             xhr.upload.onprogress = e => {
                 if (e.lengthComputable) {
                     uploadedSizes[index] = e.loaded;
                     updateProgress();
                 }
             };
-    
+
             xhr.onload = () => {
                 completedCount++;
                 if (completedCount === files.length) {
@@ -280,16 +279,16 @@ def _ul_li_js():
                     }
                 }
             };
-    
+
             xhr.onerror = () => {
                 alert(`文件 ${file.name} 上传失败`);
                 uploadedSizes[index] = 0; // 失败时重置进度
             };
-    
+
             xhr.open('POST', window.location.pathname + 'upload');
             xhr.send(formData);
         });
-    
+
         return false;
     }
 
@@ -297,18 +296,18 @@ def _ul_li_js():
     clearButton.addEventListener('click', function () {
         location.reload();
     });
-    
+
     document.getElementById('uploadForm').addEventListener('submit', function (e) {
         e.preventDefault();
         submitFile();
     });
-    
+
     let timer;
     // 设置初始的定时器
     timer = setTimeout(function () {
         location.reload();
     }, 60000);
-    
+
     fileInput.addEventListener('click', function () {
         // 清除定时器
         clearTimeout(timer);
@@ -412,6 +411,17 @@ class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.extensions_map = self.get_default_extensions_map()
         super().__init__(*args, **kwargs)
 
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except ConnectionError:
+            # 客户端提前断开连接，直接忽略，不打印任何错误
+            self.close_connection = True
+        except Exception as e:
+            # 其他未预期的错误可选择性记录日志（也可忽略）
+            self.log_error("Request handling error: %s", traceback.format_exc())
+            self.close_connection = True
+
     def do_POST(self):
         try:
             # 确保Content-Type存在且正确
@@ -504,26 +514,23 @@ class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         # 文件下载处理
         if os.path.isfile(path):
             try:
-
                 f = open(path, 'rb')
                 fs = os.fstat(f.fileno())
 
                 self.send_response(200)
                 self.send_header("Content-Type", self.guess_type(path))
                 filename = os.path.basename(path)
-                try:
-                    # RFC 5987编码处理
-                    encoded_filename = Header(filename, 'utf-8').encode()
-                    self.send_header("Content-Disposition",
-                                     f'attachment; filename="{encoded_filename}"')
-                except UnicodeEncodeError:
-                    # 兼容性处理
-                    self.send_header("Content-Disposition",
-                                     "attachment; filename*=UTF-8''{}".format(
-                                         urllib.parse.quote(filename, safe='')))
+                # 生成兼容 ASCII 的备选文件名（移除所有非 ASCII 字符）
+                ascii_name = filename.encode('ascii', 'ignore').decode('ascii')
+                # 对原始文件名进行百分号编码，用于 filename* 参数
+                encoded_filename = urllib.parse.quote(filename, safe='')
+                # 同时设置 filename（后备）和 filename*（推荐）
+                disposition = f"attachment; filename=\"{ascii_name}\"; filename*=utf-8''{encoded_filename}"
+                self.send_header("Content-Disposition", disposition)
+
                 self.send_header("Content-Length", str(fs.st_size))
                 self.send_header("Last-Modified",
-                                 self.date_time_string(fs.st_mtime))
+                                 self.date_time_string(int(fs.st_mtime)))
                 self.end_headers()
                 return f
             except OSError as e:
@@ -583,7 +590,7 @@ class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-type", ctype)
             self.send_header("Content-Length", str(fs[6]))
             self.send_header("Last-Modified",
-                             self.date_time_string(fs.st_mtime))
+                             self.date_time_string(int(fs.st_mtime)))
             self.end_headers()
             return f
         except:
@@ -662,7 +669,7 @@ class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
         return f
 
     def guess_type(self, path):
-        """Guess the type of a file.
+        """Guess the type of file.
 
                 Argument is a PATH (a filename).
 
@@ -698,27 +705,46 @@ def __fix_path(_path):
     return _path
 
 
-def Fileserver(path: str = ".", host: str = "::", port: int = 5001,
-               bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
+def file_server(path: str = ".", host: str = None, port: int = 5001,
+                bool_run: bool = True,
+                bool_https: bool = False, certfile="cert.pem", keyfile="privkey.pem"):
     """
-    快速构建文件服务器. 阻塞进程. 默认使用 HTTP
+    快速构建文件服务器，返回配置好的 HTTP 服务器实例。
 
-    >>> from hzgt.tools import Fileserver as fs
+    调用后需要自行启动服务器(bool_run为False的情况下)：
+      - 阻塞方式：`httpd.serve_forever()`
+      - 非阻塞方式（多线程）：`threading.Thread(target=httpd.serve_forever, daemon=True).start()`
 
-    >>> fs()  # 在当前目录启动文件服务器
+    默认使用 HTTP。
+
+    >>> from hzgt.tools import file_server as fs
+    >>> httpserver, server_urls = fs(bool_run=False)        # 在当前目录创建服务器（不启动）
+    >>> httpserver.serve_forever()             # 启动（阻塞）
+
+    # 多线程方式启动
+
+    >>> import threading
+    >>> from hzgt.tools import file_server as fs
+    >>> httpserver, server_urls = fs(bool_run=False)        # 在当前目录创建服务器（不启动）
+    >>> threading.Thread(target=httpserver.serve_forever, daemon=True).start()
 
     :param path: 工作目录(共享目录路径)
-    :param host: IP 默认为本地计算机的IP地址 默认为 "::"
+    :param host: IP 默认为本地计算机的IPv4地址 (通过 getip 获取)
     :param port: 端口 默认为5001
+    :param bool_run: 是否在函数内直接启动服务器
     :param bool_https: 是否启用HTTPS. 默认为False
     :param certfile: SSL证书文件路径. 默认同目录下的 cert.pem
     :param keyfile: SSL私钥文件路径. 默认同目录下的 privkey.pem
-    :return: None
+    :return: HTTP服务器实例, 生成的url列表
     """
+    # 确定主机地址
+    host = host or getip(-1, family=AddressFamily.IPV4, ignore_link_local=True)
+
+    port = port or 5001
     path = __fix_path(path)
+
     # 路径预处理：兼容Unicode路径
     try:
-        # 显式转换为Unicode路径
         path = os.path.abspath(path).encode('utf-8').decode(sys.getfilesystemencoding())
     except UnicodeEncodeError:
         path = os.path.abspath(path)
@@ -728,63 +754,53 @@ def Fileserver(path: str = ".", host: str = "::", port: int = 5001,
     except Exception as err:
         raise ValueError(f"无效的共享目录路径: {path}") from err
 
-    # 端口默认值设置
-    port = port or 5001
-    host = host or "::"
+    is_ipv6_wildcard = host == "::"
 
-    td = validate_ip(host)  # 校验并标准化IP地址
-    if td["valid"]:
-        host = td["normalized"]
-        bool_ipv6 = True if td["type"] == "IPv6" else False
-    else:
-        raise ValueError(f"无效的IP地址: {host}")
-
-    # 服务器类（支持双栈）
+    # 服务器类（支持双栈，仅对 "::" 启用双栈模式）
     class DualStackServer(ThreadingMixIn, HTTPServer):
-        address_family = socket.AF_INET6 if bool_ipv6 else socket.AF_INET
+        address_family = socket.AF_INET6 if is_ipv6_wildcard else socket.AF_INET
 
         def server_bind(self):
-            # 启用地址重用
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # 如果是IPv6，启用双栈支持
-            if bool_ipv6:
+            if is_ipv6_wildcard:
+                # 启用 IPv6 双栈，允许同时处理 IPv4 连接
                 self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             super().server_bind()
 
-    # 创建服务器实例
     server_address = (host, port)
 
     try:
         httpd = DualStackServer(server_address, __EnhancedHTTPRequestHandler)
     except Exception as e:
-        if "Address family not supported" in str(e) and bool_ipv6:
-            # IPv6失败时回退到IPv4
-            print("IPv6不可用，使用IPv4")
+        if "Address family not supported" in str(e) and is_ipv6_wildcard:
+            # IPv6 不可用时回退到 IPv4
             httpd = ThreadingTCPServer(server_address, __EnhancedHTTPRequestHandler)
         else:
             raise e from None
 
-    # HTTPS处理
+    # HTTPS 配置
     protocol = "http"
     if bool_https:
         protocol = "https"
-        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        context.load_cert_chain(certfile, keyfile)
-        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-
-    if host != "::":
-        print(f"{protocol.upper()} service running at {protocol}://"
-              f"{f'[{host}]' if bool_ipv6 else host}:{port}")
-    else:
-        print(f"{protocol.upper()} service running at")
-        for i in getip():
-            ipinfo = validate_ip(i)
-            norip = ipinfo["normalized"]
-            print(f"{protocol}://{f'[{norip}]' if ipinfo['type'] == 'IPv6' else norip}:{port}")
+        try:
+            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            context.load_cert_chain(certfile, keyfile)
+            httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+        except Exception as e:
+            raise RuntimeError(f"无法启用 HTTPS，请检查证书文件：{e}") from e
 
     os.chdir(path)  # 设置工作目录作为共享目录路径
+    httpd.max_buffer_size = 1024 * 1024 * 100  # 100MB 缓冲区
 
-    httpd.max_buffer_size = 1024 * 1024 * 100  # 100MB缓冲区
+    # 生成并打印可访问的 URL 列表
+    urls = get_server_urls(host=host, port=port, protocol=protocol, include_ipv4=True)
 
-    threading.Thread(target=httpd.serve_forever).start()
-    return httpd
+    if bool_run:
+        if urls:
+            print(f"{protocol.upper()} 服务可通过以下地址访问：")
+            for url in urls:
+                print(f"  {url}")
+        else:
+            print("未找到可访问的地址，请检查网络配置。")
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, urls

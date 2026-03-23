@@ -11,8 +11,8 @@ from paho.mqtt.enums import MQTTProtocolVersion
 from paho.mqtt.properties import Properties
 from paho.mqtt.packettypes import PacketTypes
 
-from hzgt.core.log import set_log
-from hzgt.core.Decorator import vargs
+from ..core.log import set_log
+from ..core.Decorator import vargs
 
 
 """
@@ -120,7 +120,7 @@ class Mqttop:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        return exc_type, exc_val, exc_tb
+        # return exc_type, exc_val, exc_tb
 
     @vargs({"qos": {0, 1, 2}})
     def set_will(self, will_topic: str, will_msg: str, qos: Literal[0, 1, 2] = 0, retain: bool = False):

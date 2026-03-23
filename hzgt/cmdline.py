@@ -1,5 +1,5 @@
-
-import typing as t
+import json
+import typing
 
 import click
 import click.formatting
@@ -44,8 +44,8 @@ def __wrap_text(
     if not preserve_paragraphs:
         return wrapper.fill(text)
 
-    p: t.List[t.Tuple[int, bool, str]] = []
-    buf: t.List[str] = []
+    p: typing.List[typing.Tuple[int, bool, str]] = []
+    buf: typing.List[str] = []
     indent = None
 
     def _flush_par() -> None:
@@ -86,12 +86,10 @@ click.formatting.wrap_text = __wrap_text
 # -*- coding: utf-8 -*-
 
 import os
-import signal
-import sys
 
 from .__version import __version__ as hzgt_version
-from .tools import Ftpserver, Fileserver
-from .core.ipss import getip
+from .tools import Ftpserver, file_server
+from .core.ipss import getip, AddressFamily
 from .core.CONST import CURRENT_USERNAME
 
 __HELP_CTRL_SET_DICT = {'help_option_names': ['-h', '--help']}  # 让 -h 与 --help 功能一样
@@ -126,7 +124,8 @@ def __losf():
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 @click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")  # epilog 末尾额外信息
 @click.argument('directory', default=os.getcwd(), type=click.STRING)
-@click.option("-r", "--res", default=getip(-1, family="ipv4"), type=click.STRING, help="选填- IP地址", show_default=True)
+@click.option("-r", "--res", default=getip(-1, family=AddressFamily.IPV4), type=click.STRING, help="选填- IP地址",
+              show_default=True)
 @click.option("-p", "--port", default=5001, type=click.INT, help="选填- 端口", show_default=True)
 @click.option("-pe", "--perm", default="elradfmwMT", type=click.STRING, help="选填- 权限", show_default=True)
 @click.option("-u", "--user", default=CURRENT_USERNAME, type=click.STRING, help="选填- 用户名", show_default=True)
@@ -176,7 +175,6 @@ def ftps(directory, res, port, perm, user, password):
     click.echo(f"工作目录: {directory}\n")
     fs = Ftpserver()
     fs.add_user(directory, user, password, perm=perm)
-    fs.set_log()
     fs.start(res, port)
 
 
@@ -185,7 +183,7 @@ def ftps(directory, res, port, perm, user, password):
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 @click.command(context_settings=__HELP_CTRL_SET_DICT, epilog="")
 @click.argument('directory', default=os.getcwd(), type=click.STRING, required=False)
-@click.option("-r", "--res", default=getip(-1, family="ipv4"), type=click.STRING,
+@click.option("-r", "--res", default=getip(-1, family=AddressFamily.IPV4), type=click.STRING,
               help="选填- IP地址 或者在 `hzgt ips` 命令长度之间(如需输入负数, 使用`-- -3`的方式)", show_default=True)
 @click.option("-p", "--port", default=9090, type=click.INT, help="选填- 端口", show_default=True)
 def fs(directory, res, port):
@@ -201,7 +199,11 @@ def fs(directory, res, port):
     tempips = getip()
     if res in [f"{i}" for i in range(-len(tempips), len(tempips))]:
         res = tempips[int(res)]
-    Fileserver(directory, res, port)
+
+    httpserver, server_urls = file_server(directory, res, port, bool_run=False)  # 在当前目录创建服务器（不启动）
+    for url in server_urls:
+        click.echo(url)
+    httpserver.serve_forever()
 
 
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -213,15 +215,13 @@ def fs(directory, res, port):
               help='显示详细信息（接口名称、地址类型等）')
 @click.option('-f', '--family', type=click.Choice(['ipv4', 'ipv6', 'mac', 'all']),
               default='all', help='筛选地址类型: ipv4, ipv6, mac 或 all')
-@click.option('-i', '--ignore-local', is_flag=True, default=False,
-              help='过滤本地地址（127.0.0.1, ::1, fe80::）')
 @click.option('--no-mac', is_flag=True, default=False,
               help='不显示mac地址（当family=all时有效）')
 @click.option('-t', '--table', is_flag=True, default=False,
               help='以表格形式显示详细信息（自动启用--details）')
-@click.option('-j', '--json', is_flag=True, default=False,
+@click.option('-j', '--j', is_flag=True, default=False,
               help='以JSON格式输出（适合程序处理）')
-def ips(index, details, family, ignore_local, no_mac, table, json):
+def ips(index, details, family, no_mac, table, j):
     """
     获取本机网络接口信息
 
@@ -263,54 +263,51 @@ def ips(index, details, family, ignore_local, no_mac, table, json):
 
       hzgt ips -j               # JSON格式（程序友好）
 
-      hzgt ips -i               # 过滤本地地址
-
       # 4. 混合模式
 
-      hzgt ips -j -f ipv4 -- -1         # 以json格式显示最后一个IP地址信息(仅ipv4)
+      hzgt ips -j -f ipv4 -- -1 # 以json格式显示最后一个IP地址信息(仅ipv4)
     """
     # 处理参数逻辑
     if table:
         details = True  # 表格模式自动启用详细信息
 
+    # 将 family 字符串转换为枚举或 None
     if family == 'all':
         family_param = None
     else:
-        family_param = family
+        # 映射到 AddressFamily 枚举
+        family_map = {
+            'ipv4': AddressFamily.IPV4,
+            'ipv6': AddressFamily.IPV6,
+            'mac': AddressFamily.MAC
+        }
+        family_param = family_map[family]
 
-    if json:
-        result = getip(
-            index=index,
-            details=True,
-            family=family_param,
-            ignore_local=ignore_local,
-            include_mac=not no_mac
-        )
-    else:
-        result = getip(
-            index=index,
-            details=details,
-            family=family_param,
-            ignore_local=ignore_local,
-            include_mac=not no_mac
-        )
+    # 调用 getip（始终不过滤环回和链路本地地址）
+    result = getip(
+        index=index,
+        details=details or j,  # JSON输出也需要详细信息
+        family=family_param,
+        include_mac=not no_mac,
+        ignore_loopback=False,  # 固定不过滤
+        ignore_link_local=False  # 固定不过滤
+    )
 
     # 格式化输出
-    output = _format_output(result, details, table, json, index)
+    output = _format_output(result, details, table, j, index)
     click.echo(output)
 
 
 def _format_output(result, details, table, json_format, index=None):
     """格式化输出结果"""
     if json_format:
-        import json
         return json.dumps(result, ensure_ascii=False, indent=2)
 
     if not details:
         # 简单IP列表输出
         if isinstance(result, list):
             if len(result) == 0:
-                return "未找到匹配的地址"
+                return "--"
             return "\n".join(str(ip) for ip in result)
         else:
             return str(result)
@@ -323,7 +320,7 @@ def _format_output(result, details, table, json_format, index=None):
         # 接口列表
         return _format_interface_list(result, table, index)
 
-    return "未找到匹配的网络接口"
+    return "--"
 
 
 def _format_single_interface(interface, table):
@@ -331,18 +328,16 @@ def _format_single_interface(interface, table):
     if table:
         return _create_interface_table([interface])
 
-    output = [f"接口: {interface['name']}"]
+    output = [f"Interface: {interface['name']}"]
 
     for key in ['ipv4', 'ipv6', 'mac']:
         if key in interface:
-            value = interface[key]
-            if isinstance(value, list):
-                if value:
-                    output.append(f"  {key}:")
-                    for item in value:
-                        output.append(f"    - {item}")
-            elif value:
-                output.append(f"  {key}: {value}")
+            addr_list = interface[key]
+            if addr_list:
+                output.append(f"  {key}:")
+                for addr_info in addr_list:
+                    # 从字典中提取 address 字段
+                    output.append(f"    - {addr_info['address']}")
 
     return "\n".join(output)
 
@@ -350,7 +345,7 @@ def _format_single_interface(interface, table):
 def _format_interface_list(interfaces, table, index):
     """格式化接口列表"""
     if not interfaces:
-        return "未找到网络接口"
+        return "--"
 
     if table:
         return _create_interface_table(interfaces)
@@ -364,14 +359,11 @@ def _format_interface_list(interfaces, table, index):
 
         for key in ['ipv4', 'ipv6', 'mac']:
             if key in interface:
-                value = interface[key]
-                if isinstance(value, list):
-                    if value:
-                        output.append(f"  {key}:")
-                        for item in value:
-                            output.append(f"    - {item}")
-                elif value:
-                    output.append(f"  {key}: {value}")
+                addr_list = interface[key]
+                if addr_list:
+                    output.append(f"  {key}:")
+                    for addr_info in addr_list:
+                        output.append(f"    - {addr_info['address']}")
 
         if i < len(interfaces) - 1:
             output.append("─" * 40)
@@ -385,7 +377,7 @@ def _create_interface_table(interfaces):
 
     for interface in interfaces:
         row = {
-            '接口名称': interface['name'],
+            'Interface Name': interface['name'],
             'ipv4': _format_value(interface.get('ipv4')),
             'ipv6': _format_value(interface.get('ipv6')),
             'mac': _format_value(interface.get('mac'))
@@ -395,17 +387,16 @@ def _create_interface_table(interfaces):
     return tabulate(table_data, headers='keys', tablefmt='grid')
 
 
-def _format_value(value):
-    """格式化值：列表转字符串"""
-    if isinstance(value, list):
-        if not value:
-            return ''
-        return '\n'.join(value)
-    return value if value else ''
+def _format_value(addr_list):
+    """格式化地址列表（用于表格显示）"""
+    if not addr_list:
+        return ''
+    # 提取 address 字段并用换行拼接
+    addresses = [item['address'] for item in addr_list]
+    return '\n'.join(addresses)
 
 
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 __losf.add_command(ftps)
 __losf.add_command(fs)
 __losf.add_command(ips)

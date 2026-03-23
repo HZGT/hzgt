@@ -8,7 +8,9 @@ import threading
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Union, Dict, Any, List
 
-from hzgt.core import ensure_file, vargs, restrop, generate_filename
+from .Decorator import vargs
+from .fileop import ensure_file, ensure_suffix
+from .strop import restrop
 
 LOG_LEVEL_DICT = {
     0: logging.NOTSET,
@@ -675,7 +677,7 @@ def set_log(
     # 创建文件处理器（如果启用）
     if file_enabled and fpath:
         # 确定日志文件名
-        log_name = generate_filename(name, fname=fname, suffix=".log")
+        log_name = ensure_suffix(name, fname=fname, suffix=".log")
         logfile = os.path.join(fpath, log_name)
 
         # 确保日志文件存在
@@ -703,7 +705,7 @@ def set_log(
     # 创建JSON日志处理器（如果启用）
     if json_enabled:
         # 确定JSON日志文件名
-        json_log_name = generate_filename(name, fname=fname, suffix=".json.log")
+        json_log_name = ensure_suffix(name, fname=fname, suffix=".json.log")
         json_logfile = os.path.join(fpath, json_log_name)
 
         # 确保日志文件存在

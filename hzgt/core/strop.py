@@ -1,23 +1,17 @@
 # -*- coding: utf-8 -*-
 
-import inspect
-import linecache
-import re
-
-from hzgt.core.CONST import STYLE
-from hzgt.core.Decorator import vargs
+from .CONST import STYLE
+from .Decorator import vargs
 
 
-def pic(*args, bool_header=False, bool_show=True):
+def pic(*args):
     """
-    输出 变量名 | 变量类型 | 值
-    支持跨行调用，优化参数名称提取
-
-    :param args: 不定数量
-    :param bool_header: 是否显示列名
-    :param bool_show: 是否直接打印
-    :return: list[tuple[Any, str, Any]] (变量名, 变量类型, 值) 不定数量
+    返回变量名、类型和值的列表。
+    每个元素是 (变量名, 类型名, 值)
     """
+    import inspect
+    import linecache
+    import re
 
     def extract_arguments():
         stacks = inspect.stack()
@@ -25,33 +19,29 @@ def pic(*args, bool_header=False, bool_show=True):
         filename = caller_frame.f_code.co_filename
         lineno = caller_frame.f_lineno
 
-        # 获取多行代码上下文
         lines = linecache.getlines(filename)
         start_line = max(0, lineno - 3)
         end_line = min(len(lines), lineno + 3)
         context = ''.join(lines[start_line:end_line])
 
-        # 定位函数调用起始位置
         pattern = re.compile(rf'pic\s*\(', re.DOTALL)
         match = pattern.search(context)
         if not match:
             return [f'arg{i}' for i in range(len(args))]
 
         start_pos = match.end()
-        # 括号匹配提取参数部分
         stack = []
         args_str = ""
         for char in context[start_pos:]:
-            if char == '(' or char == '[' or char == '{':
+            if char in '([{':
                 stack.append(char)
-            elif char == ')' or char == ']' or char == '}':
+            elif char in ')]}':
                 if stack:
                     stack.pop()
                 if not stack and char == ')':
                     break
             args_str += char
 
-        # 优化参数分割：按逗号分割但考虑括号嵌套
         stack = []
         arguments = []
         current_arg = []
@@ -76,45 +66,16 @@ def pic(*args, bool_header=False, bool_show=True):
 
     try:
         strvns = extract_arguments()
-        # 清理参数名称：移除多余换行和空格
         strvns = [re.sub(r'\s+', ' ', name).strip() for name in strvns]
         if len(strvns) != len(args):
             strvns = [f'arg{i}' for i in range(len(args))]
     except Exception:
         strvns = [f'arg{i}' for i in range(len(args))]
 
-    maxlenname = max(len(max(strvns, key=len, default='')), 4)
-    typevns = [type(arg).__name__ for arg in args]
-    maxlentype = max(len(max(typevns, key=len, default='')), 4)
-
     _temp_list = []
     for name, arg in zip(strvns, args):
         type_name = type(arg).__name__
         _temp_list.append((name, type_name, arg))
-
-        if not bool_show:
-            continue
-
-        if bool_header:
-            header = (
-                f"{'Name'.ljust(maxlenname)} | "
-                f"{'Type'.ljust(maxlentype)} | "
-                f"Value"
-            )
-            print(header)
-            print('-' * (maxlenname + maxlentype + 15))
-            bool_header = False
-
-        value_str = str(arg)
-        if '\n' in value_str:
-            value_str = value_str.replace('\n', '\\n')
-
-        row = (
-            f"{name.ljust(maxlenname)} | "
-            f"{type_name.ljust(maxlentype)} | "
-            f"{value_str}"
-        )
-        print(row)
 
     return _temp_list
 

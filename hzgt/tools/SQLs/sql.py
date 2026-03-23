@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from hzgt import set_log
+from ...core.log import set_log
 
 # 设置日志
 logger = set_log("testSQLs")

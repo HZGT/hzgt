@@ -69,26 +69,6 @@ def install_service():
 install_service()
 ```
 
-### check_admin_and_prompt()
-
-**功能**：检查管理员权限并提示用户。
-
-**参数**：
-- `operation_name`：操作名称，用于提示信息
-
-**返回值**：`bool` - 是否具有管理员权限
-
-**使用示例**：
-```python
-from hzgt import check_admin_and_prompt
-
-if check_admin_and_prompt("修改系统配置"):
-    # 具有管理员权限，执行操作
-    print("执行系统配置修改")
-else:
-    # 没有管理员权限，退出或执行其他操作
-    print("无法执行操作，需要管理员权限")
-```
 
 ### execute_command()
 
@@ -108,20 +88,22 @@ else:
 - `FileNotFoundError`：命令不存在
 
 **使用示例**：
+
 ```python
-from hzgt import execute_command
+from hzgt import run_cmd
 import subprocess
 
 # 执行简单命令
 print("执行 'echo Hello World'")
-for output in execute_command("echo Hello World"):
+for output in run_cmd("echo Hello World"):
     print(f"输出: {output}")
 
 # 执行列出目录的命令
 print("\n执行目录列表命令")
 import sys
+
 cmd = "dir" if sys.platform.startswith('win') else "ls -la"
-for output in execute_command(cmd):
+for output in run_cmd(cmd):
     print(f"输出: {output}")
 
 # 使用列表形式的命令
@@ -131,7 +113,7 @@ if sys.platform.startswith('win'):
 else:
     cmd_list = ["echo", "Hello from list"]
 
-for output in execute_command(cmd_list):
+for output in run_cmd(cmd_list):
     print(f"输出: {output}")
 
 # 带超时的命令
@@ -143,7 +125,7 @@ try:
     else:
         cmd = "ping -c 10 127.0.0.1"  # Linux/Mac ping命令
 
-    for output in execute_command(cmd, timeout=3.0):
+    for output in run_cmd(cmd, timeout=3.0):
         print(f"输出: {output}")
 except subprocess.TimeoutExpired:
     print("命令执行超时")

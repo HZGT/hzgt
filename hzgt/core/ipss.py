@@ -1,138 +1,102 @@
-import ipaddress
+import os
 import socket
-
-import re
-
-from typing import Union, List, Tuple, Optional, Dict, Any, Literal
+from enum import Enum
+from functools import lru_cache
+from ipaddress import ip_address
+from typing import Optional, List, Dict, Any, Union
 
 import psutil
 
 
-# def __get_ipv4_addresses() -> List[str]:
-#     """
-#     获取本机的 ipv4 地址列表
-#     """
-#     # 获取主机名
-#     hostname = socket.gethostname()
-#
-#     # 获取 ipv4 地址列表
-#     ipv4_addresses = socket.gethostbyname_ex(hostname)[-1]
-#
-#     # 尝试通过连接获取更多可能的 ipv4 地址
-#     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#     try:
-#         sock.connect(('10.255.255.255', 1))
-#         additional_ip = sock.getsockname()[0]
-#         if additional_ip not in ipv4_addresses:
-#             ipv4_addresses.append(additional_ip)
-#     except Exception:
-#         pass
-#     finally:
-#         sock.close()
-#
-#     # 确保包含本地回环地址
-#     if '127.0.0.1' not in ipv4_addresses:
-#         ipv4_addresses.insert(0, '127.0.0.1')
-#
-#     return ipv4_addresses
-#
-#
-# def __get_ipv6_addresses() -> List[str]:
-#     """
-#     获取本机的 ipv6 地址列表
-#     """
-#     # 获取主机名
-#     hostname = socket.gethostname()
-#
-#     # 获取 ipv6 地址列表
-#     ipv6_addresses = []
-#     try:
-#         addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET6)
-#         ipv6_addresses = [info[4][0] for info in addr_info]
-#     except socket.gaierror:
-#         pass
-#
-#     # 尝试通过连接获取更多可能的 ipv6 地址
-#     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-#     try:
-#         sock.connect(('2402:4e00::', 1))
-#         additional_ip = sock.getsockname()[0]
-#         if additional_ip not in ipv6_addresses:
-#             ipv6_addresses.append(additional_ip)
-#     except Exception as err:
-#         pass  # 不支持公网 IPV6
-#     finally:
-#         sock.close()
-#
-#     return ipv6_addresses
-#
-#
-# def getip(index: int = None) -> Union[str, List[str]]:
-#     """
-#     获取本机 IP 地址
-#
-#     :param index: 如果指定 index, 则返回 IP 地址列表中索引为 index 的 IP, 否则返回 IP 地址列表
-#     :return: IP 地址 或 IP 地址列表
-#     """
-#     if index is not None and not isinstance(index, int):
-#         raise TypeError("参数 index 必须为整数 或为 None")
-#
-#     # 获取 ipv4 和 ipv6 地址列表
-#     addresses = __get_ipv6_addresses() + __get_ipv4_addresses()
-#
-#     # 根据 index 返回结果
-#     if index is None:
-#         return addresses
-#     else:
-#         if index >= len(addresses):
-#             raise IndexError(f"索引超出范围, 最大索引为 {len(addresses)}")
-#         return addresses[index]
-def getip(
-        index: Optional[int] = None,
-        details: bool = False,
-        family: Literal['ipv4', 'ipv6', 'mac'] = None,
-        ignore_local: bool = False,
-        include_mac: bool = False
-) -> Union[List[Dict[str, Any]], Dict[str, Any], List[str], str]:
-    """
-    获取本机网络接口的IP地址信息, 按接口名称合并
+# ---------- 枚举定义 ----------
+class AddressFamily(Enum):
+    IPV4 = 'ipv4'
+    IPV6 = 'ipv6'
+    MAC = 'mac'
 
-    :param index: 如果指定, 则返回地址列表中指定索引的单个结果
-    :param details: 为True时返回包含详细信息的字典列表；为False时仅返回IP地址字符串
-    :param family: 过滤地址族, 可选 'ipv4', 'ipv6', 'mac'
-    :param ignore_local: 为True时过滤掉环回地址（127.0.0.1, ::1）和链路本地地址（fe80::）
-    :param include_mac: 为True时包含mac地址信息
-    :return: 根据参数返回字典列表、单个字典、IP字符串列表或单个IP字符串
-    :raises TypeError: 当index参数类型错误时
-    :raises ValueError: 当family参数不合法时
-    :raises IndexError: 当index超出地址列表范围时
+
+# ---------- 私有辅助函数 ----------
+def _strip_ip_scope(address: str) -> Union[tuple[str, str], tuple[str, None]]:
+    """分离IP地址中的 % 作用域标识 """
+    if '%' in address:
+        return address.split('%', 1)[0], address.split('%', 1)[1]
+    return address, None
+
+
+def _get_addr_properties(address: str, family: int):
     """
-    # 参数验证
+    返回 (is_loopback, is_link_local)
+    对于MAC地址或解析失败的地址，两者均为False
+    """
+    if family not in (socket.AF_INET, socket.AF_INET6):
+        return False, False
+    try:
+        clean_addr, _ = _strip_ip_scope(address)
+        ip_obj = ip_address(clean_addr)
+        return ip_obj.is_loopback, ip_obj.is_link_local
+    except Exception:
+        return False, False
+
+
+def _get_wlan_names(wlan_names: Optional[List[str]]) -> List[str]:
+    """获取无线接口名称前缀列表（用于排序放最后）"""
+    if wlan_names is not None:
+        return [name.strip().lower() for name in wlan_names]
+    env_names = os.environ.get('GETIP_WLAN_NAMES', 'wlan')
+    return [name.strip().lower() for name in env_names.split(',')]
+
+
+def _validate_params(
+        index: Optional[int],
+        family: Optional[AddressFamily],
+        include_mac: bool
+) -> tuple:
+    """
+    验证参数并返回：
+    - socket_family: 对应的socket地址族，或None
+    - force_include_mac: 是否需要强制包含MAC（当family='mac'时）
+    """
     if index is not None and not isinstance(index, int):
-        raise TypeError("参数 'index' 必须为整数或 None")
+        raise TypeError("参数 'index' 必须为 整数 或 None")
 
-    # 定义family映射到socket常量
     family_mapping = {
-        'ipv4': socket.AF_INET,
-        'ipv6': socket.AF_INET6,
-        'mac': psutil.AF_LINK
+        AddressFamily.IPV4: socket.AF_INET,
+        AddressFamily.IPV6: socket.AF_INET6,
+        AddressFamily.MAC: psutil.AF_LINK
     }
-
-    # 将字符串family转换为对应的socket常量
     socket_family = None
+    force_include_mac = include_mac
+
     if family is not None:
         if family not in family_mapping:
-            raise ValueError(f"family参数必须为 'ipv4', 'ipv6', 'mac' 之一, 而不是 '{family}'")
+            raise ValueError(f"family参数必须为 {AddressFamily.IPV4}, {AddressFamily.IPV6}, {AddressFamily.MAC} 之一，而不是 '{family}'")
         socket_family = family_mapping[family]
-        # 如果family是'mac', 确保include_mac为True
-        if family == 'mac':
-            include_mac = True
+        if family == AddressFamily.MAC:
+            force_include_mac = True  # 强制包含MAC
 
-    # 按接口名称分组收集地址信息
+    return socket_family, force_include_mac
+
+
+def _build_interface_dict(
+        socket_family: Optional[int],
+        ignore_loopback: bool,
+        ignore_link_local: bool,
+        include_mac: bool
+) -> Dict[str, Dict]:
+    """
+    遍历所有网络接口，构建原始数据字典：
+    {
+        iface_name: {
+            'name': iface_name,
+            'ipv4': [{'address':..., 'is_loopback':..., 'is_link_local':...}, ...],
+            'ipv6': [...],
+            'mac':  [{'address':...}, ...]
+        }
+    }
+    已应用family、ignore_loopback、ignore_link_local过滤。
+    """
     interface_dict = {}
-
     for iface_name, iface_addrs in psutil.net_if_addrs().items():
-        # 初始化接口字典
         if iface_name not in interface_dict:
             interface_dict[iface_name] = {
                 'name': iface_name,
@@ -142,294 +106,260 @@ def getip(
             }
 
         for addr_info in iface_addrs:
-            current_family = addr_info.family
-            ip_address = addr_info.address
+            cur_family = addr_info.family
+            raw_address = addr_info.address
 
-            # 1. 按地址族过滤
-            if socket_family is not None and current_family != socket_family:
+            if socket_family is not None and cur_family != socket_family:
                 continue
 
-            # 2. 应用本地地址过滤
-            if ignore_local and _is_local_address(ip_address):
+            is_loopback, is_link_local = _get_addr_properties(raw_address, cur_family)
+
+            if ignore_loopback and is_loopback:
+                continue
+            if ignore_link_local and is_link_local:
                 continue
 
-            # 根据地址族类型添加到不同列表
-            if current_family == socket.AF_INET:
-                interface_dict[iface_name]['ipv4'].append(ip_address)
-            elif current_family == socket.AF_INET6:
-                interface_dict[iface_name]['ipv6'].append(ip_address)
-            elif current_family == psutil.AF_LINK:
-                if include_mac:
-                    interface_dict[iface_name]['mac'].append(ip_address)
+            clean_address, _ = _strip_ip_scope(raw_address)
+            addr_info_dict = {
+                'address': clean_address,
+                'is_loopback': is_loopback,
+                'is_link_local': is_link_local
+            }
 
-    # 转换为列表并过滤空接口、调整数据结构
+            if cur_family == socket.AF_INET:
+                interface_dict[iface_name]['ipv4'].append(addr_info_dict)
+            elif cur_family == socket.AF_INET6:
+                interface_dict[iface_name]['ipv6'].append(addr_info_dict)
+            elif cur_family == psutil.AF_LINK and include_mac:
+                interface_dict[iface_name]['mac'].append({'address': clean_address})
+
+    return interface_dict
+
+
+def _filter_and_sort_interfaces(
+        interface_dict: Dict[str, Dict],
+        socket_family: Optional[int],
+        include_mac: bool,
+        wlan_names: List[str]
+) -> List[Dict]:
+    """
+    过滤掉空接口，转换为列表格式，并按规则排序（无线接口放最后）。
+    返回列表中的每个字典格式同原函数中的接口字典。
+    """
     all_interfaces = []
-    for iface_name, iface_data in interface_dict.items():
-        # 如果指定了family但该接口没有该family的地址, 则跳过
-        if socket_family is not None:
-            if socket_family == socket.AF_INET and not iface_data['ipv4']:
-                continue
-            elif socket_family == socket.AF_INET6 and not iface_data['ipv6']:
-                continue
-            elif socket_family == psutil.AF_LINK and not iface_data['mac']:
-                continue
+    for iface_name, data in interface_dict.items():
+        # 根据family过滤空接口
+        if socket_family == socket.AF_INET and not data['ipv4']:
+            continue
+        if socket_family == socket.AF_INET6 and not data['ipv6']:
+            continue
+        if socket_family == psutil.AF_LINK and not data['mac']:
+            continue
 
-        # 简化为单值而不是列表（如果只有一个地址）
-        simplified_data = {'name': iface_name}
+        simplified = {'name': iface_name}
+        if data['ipv4']:
+            simplified['ipv4'] = data['ipv4']
+        if data['ipv6']:
+            simplified['ipv6'] = data['ipv6']
+        if include_mac and data['mac']:
+            simplified['mac'] = data['mac']
 
-        # 处理ipv地址
-        if len(iface_data['ipv4']) == 1:
-            simplified_data['ipv4'] = iface_data['ipv4'][0]
-        elif len(iface_data['ipv4']) > 1:
-            simplified_data['ipv4'] = iface_data['ipv4']
+        if len(simplified) > 1:  # 至少包含一个地址
+            all_interfaces.append(simplified)
 
-        # 处理ipv6地址
-        if len(iface_data['ipv6']) == 1:
-            simplified_data['ipv6'] = iface_data['ipv6'][0]
-        elif len(iface_data['ipv6']) > 1:
-            simplified_data['ipv6'] = iface_data['ipv6']
+    # 排序：无线接口放最后
+    def _sort_key(iface):
+        name_lower = iface['name'].lower()
+        is_wlan = any(name_lower.startswith(prefix) for prefix in wlan_names)
+        return (1, '') if is_wlan else (0, iface['name'])
 
-        # 处理mac地址
-        if include_mac:
-            if len(iface_data['mac']) == 1:
-                simplified_data['mac'] = iface_data['mac'][0]
-            elif len(iface_data['mac']) > 1:
-                simplified_data['mac'] = iface_data['mac']
+    all_interfaces.sort(key=_sort_key)
+    return all_interfaces
 
-        # 只有当接口至少有一种地址时才添加到结果列表
-        if len(simplified_data) > 1:  # 除了name之外还有其他键
-            all_interfaces.append(simplified_data)
 
-    # 按接口名称排序, 但将WLAN排在最后
-    def get_sort_key(_interface):
-        name = _interface['name']
-        return (1, '') if name == 'WLAN' else (0, name)
+def _extract_ips_from_interface(iface_dict: Dict, family: Optional[AddressFamily]) -> List[str]:
+    """从单个接口字典中提取指定family的IP地址列表"""
+    ips = []
+    if family in (None, AddressFamily.IPV4) and 'ipv4' in iface_dict:
+        ips.extend(addr['address'] for addr in iface_dict['ipv4'])
+    if family in (None, AddressFamily.IPV6) and 'ipv6' in iface_dict:
+        ips.extend(addr['address'] for addr in iface_dict['ipv6'])
+    if family == AddressFamily.MAC and 'mac' in iface_dict:
+        ips.extend(addr['address'] for addr in iface_dict['mac'])
+    return ips
 
-    all_interfaces.sort(key=get_sort_key)
 
-    # 根据参数返回结果
-    if index is not None:
-        if index >= len(all_interfaces):
-            raise IndexError(
-                f"索引 {index} 超出范围列表共有 {len(all_interfaces)} 个接口"
-            )
-        result = all_interfaces[index]
-
-        if not details:
-            # 返回该接口的所有IP地址列表
-            all_ips = []
-            if 'ipv4' in result:
-                if isinstance(result['ipv4'], list):
-                    all_ips.extend(result['ipv4'])
-                else:
-                    all_ips.append(result['ipv4'])
-            if 'ipv6' in result:
-                if isinstance(result['ipv6'], list):
-                    all_ips.extend(result['ipv6'])
-                else:
-                    all_ips.append(result['ipv6'])
-            # 当family为'mac'时, 只返回mac地址
-            if family == 'mac' and 'mac' in result:
-                if isinstance(result['mac'], list):
-                    all_ips.extend(result['mac'])
-                else:
-                    all_ips.append(result['mac'])
-            return all_ips[0] if len(all_ips) == 1 else all_ips
-        return result
-
-    # 返回列表
-    if details:
-        return all_interfaces
-
-    # 返回所有接口的所有IP地址列表
+def _collect_all_ips(
+        all_interfaces: List[Dict],
+        family: Optional[AddressFamily],
+        include_mac: bool,
+        include_wildcard: bool
+) -> List[str]:
+    """收集所有IP地址（用于details=False且index=None时）"""
     all_ips = []
-    for interface in all_interfaces:
-        # 根据family参数决定返回哪些地址
-        if family == 'ipv4':
-            if 'ipv4' in interface:
-                if isinstance(interface['ipv4'], list):
-                    all_ips.extend(interface['ipv4'])
-                else:
-                    all_ips.append(interface['ipv4'])
-        elif family == 'ipv6':
-            if 'ipv6' in interface:
-                if isinstance(interface['ipv6'], list):
-                    all_ips.extend(interface['ipv6'])
-                else:
-                    all_ips.append(interface['ipv6'])
-        elif family == 'mac':
-            if 'mac' in interface:
-                if isinstance(interface['mac'], list):
-                    all_ips.extend(interface['mac'])
-                else:
-                    all_ips.append(interface['mac'])
-        else:  # family为None, 返回所有类型地址
-            if 'ipv4' in interface:
-                if isinstance(interface['ipv4'], list):
-                    all_ips.extend(interface['ipv4'])
-                else:
-                    all_ips.append(interface['ipv4'])
-            if 'ipv6' in interface:
-                if isinstance(interface['ipv6'], list):
-                    all_ips.extend(interface['ipv6'])
-                else:
-                    all_ips.append(interface['ipv6'])
-            if include_mac and 'mac' in interface:
-                if isinstance(interface['mac'], list):
-                    all_ips.extend(interface['mac'])
-                else:
-                    all_ips.append(interface['mac'])
 
+    if include_wildcard:
+        if family in (None, AddressFamily.IPV4):
+            all_ips.append('0.0.0.0')
+        if family in (None, AddressFamily.IPV6):
+            all_ips.append('::')
+
+    if family == AddressFamily.IPV4:
+        keys = ['ipv4']
+    elif family == AddressFamily.IPV6:
+        keys = ['ipv6']
+    elif family == AddressFamily.MAC:
+        keys = ['mac']
+    else:
+        keys = ['ipv4', 'ipv6']
+        if include_mac:
+            keys.append('mac')
+
+    for iface in all_interfaces:
+        for key in keys:
+            if key in iface:
+                all_ips.extend(addr['address'] for addr in iface[key])
     return all_ips
 
 
-def _is_local_address(ip: str) -> bool:
+# ---------- 主函数 ----------
+@lru_cache
+def getip(
+        index: Optional[int] = None,
+        details: bool = False,
+        family: Optional[AddressFamily] = None,
+        ignore_loopback: bool = False,
+        ignore_link_local: bool = False,
+        include_mac: bool = False,
+        include_wildcard: bool = True,
+        wlan_names: Optional[List[str]] = None
+) -> Union[List[Dict[str, Any]], Dict[str, Any], List[str], str]:
     """
-    判断一个IP地址是否为本地地址（环回或链路本地）
+    获取本机网络接口的IP地址信息，按接口名称合并。
+
+    处理IPv6地址时自动去除 `%` 之后的作用域标识（如 `fe80::1%eth0` → `fe80::1`）。
+
+    :param index: 如果指定，则返回地址列表中指定索引的单个结果
+    :param details: 为True时返回包含详细信息的字典列表；为False时仅返回IP地址字符串
+    :param family: 过滤地址族，可选 AddressFamily.IPV4, AddressFamily.IPV6, AddressFamily.MAC
+    :param ignore_loopback: 为True时过滤掉环回地址（127.0.0.1, ::1）
+    :param ignore_link_local: 为True时过滤掉链路本地地址（169.254.x.x, fe80::/10）
+    :param include_mac: 为True时包含mac地址信息
+    :param include_wildcard: 为True且details=False时，在最终IP列表中添加通配地址（0.0.0.0和::）
+    :param wlan_names: 视为无线接口的名称前缀列表（用于排序放最后）。默认从环境变量
+                       GETIP_WLAN_NAMES 读取（逗号分隔），若未设置则使用 ('wlan',)
+    :return: 根据参数返回字典列表、单个字典、IP字符串列表或单个IP字符串
+    :raises TypeError: 当index参数类型错误时
+    :raises ValueError: 当family参数不合法时
+    :raises IndexError: 当index超出地址列表范围时
     """
+    # 1. 参数验证
+    socket_family, force_include_mac = _validate_params(index, family, include_mac)
+    wlan_prefixes = _get_wlan_names(wlan_names)
+
+    # 2. 构建接口字典
+    interface_dict = _build_interface_dict(
+        socket_family,
+        ignore_loopback,
+        ignore_link_local,
+        force_include_mac
+    )
+
+    # 3. 过滤空接口并排序
+    all_interfaces = _filter_and_sort_interfaces(
+        interface_dict,
+        socket_family,
+        force_include_mac,
+        wlan_prefixes
+    )
+
+    # 4. 根据参数返回结果
+    if index is not None:
+        if index >= len(all_interfaces):
+            raise IndexError(f"索引 {index} 超出范围，列表共有 {len(all_interfaces)} 个接口")
+        result = all_interfaces[index]
+
+        if not details:
+            ips = _extract_ips_from_interface(result, family)
+            return ips[0] if len(ips) == 1 else ips
+        return result
+
+    if details:
+        return all_interfaces
+
+    # 返回IP地址列表
+    return _collect_all_ips(all_interfaces, family, force_include_mac, include_wildcard)
+
+
+def get_server_urls(
+        host: str,
+        port: int,
+        protocol: str = "http",
+        include_ipv4: bool = False,
+) -> List[str]:
+    """
+    根据绑定的主机地址和端口，返回所有可访问的 URL 列表。
+
+    自动识别主机地址的地址族（ipv4/ipv6）和通配属性：
+    - 若主机是通配地址（"0.0.0.0" 或 "::"），则返回对应地址族的所有有效 ip，
+      包括环回地址和链路本地地址。
+    - 若主机是 ipv6 通配地址（"::"）且 `include_ipv4=True`，则同时返回
+      ipv4 和 ipv6 地址（即双栈模式下的所有可用地址）。
+    - 否则仅返回主机地址本身对应的 URL。
+
+    :param host: 绑定的主机地址（例如 "0.0.0.0", "::", "192.168.1.100", "::1"）
+    :param port: 端口号
+    :param protocol: 协议 ("http" 或 "https")
+    :param include_ipv4: 当 host 为 "::" 时，是否同时返回 ipv4 地址
+    :return: URL 字符串列表
+    """
+    # 分离作用域标识
+    addr_part, _ = _strip_ip_scope(host)
+
+    # 验证并获取地址信息
     try:
-        ip_obj = ipaddress.ip_address(ip)
-        return ip_obj.is_loopback or ip_obj.is_link_local
+        ip = ip_address(addr_part)
     except ValueError:
-        return False
+        return []
 
+    normalized = str(ip)
+    host_type = AddressFamily.IPV4 if ip.version == 4 else AddressFamily.IPV6
+    is_wildcard = normalized in ("0.0.0.0", "::")
 
-def validate_ip(ip_str: str) -> dict:
-    """
-    验证IP地址有效性并返回类型信息
-
-    参数:
-        ip_str (str): 要验证的IP地址字符串
-
-    返回:
-        dict: 包含验证结果的字典, 格式为:
-            {
-                "valid": bool,       # IP是否有效
-                "type": str or None,  # "ipv4"、"ipv6" 或 None(无效时)
-                "normalized": str    # 标准化后的IP地址(有效时)
-            }
-
-    """
-    # 尝试匹配ipv
-    ipv4_pattern = r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$"
-
-    if re.match(ipv4_pattern, ip_str):
-        # 检查每个部分是否在0-255范围内
-        parts = list(map(int, ip_str.split(".")))
-        if all(0 <= p <= 255 for p in parts):
-            return {
-                "valid": True,
-                "type": "ipv4",
-                "normalized": ip_str  # ipv不需要特殊标准化
-            }
-
-    # 尝试匹配ipv6（支持多种格式）
-    ipv6_pattern = r'^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|' \
-                   r'([0-9a-fA-F]{1,4}:){1,7}:|' \
-                   r'([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|' \
-                   r'([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|' \
-                   r'([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|' \
-                   r'([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|' \
-                   r'([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|' \
-                   r'[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|' \
-                   r':((:[0-9a-fA-F]{1,4}){1,7}|:)|' \
-                   r'fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|' \
-                   r'::(ffff(:0{1,4}){0,1}:){0,1}' \
-                   r'((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}' \
-                   r'(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|' \
-                   r'([0-9a-fA-F]{1,4}:){1,4}:' \
-                   r'((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}' \
-                   r'(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))(\%[\S]+)?$'
-
-    if re.match(ipv6_pattern, ip_str):
-        # 标准化ipv6地址
-        normalized = __normalize_ipv6(ip_str)
-        return {
-            "valid": True,
-            "type": "ipv6",
-            "normalized": normalized
-        }
-
-    # 无效IP
-    return {
-        "valid": False,
-        "type": None,
-        "normalized": ""
-    }
-
-
-def __normalize_ipv6(ipv6_str: str) -> str:
-    """
-    标准化ipv6地址（RFC 5952格式）
-
-    1. 小写十六进制字符
-    2. 压缩连续的零段（使用::）
-    3. 移除前导零
-    4. 处理ipv映射地址
-
-    参数:
-        ipv6_str (str): 原始ipv6地址字符串
-
-    返回:
-        str: 标准化后的ipv6地址
-    """
-    # 如果包含ipv映射部分（::ffff:192.168.1.1）
-    if '.' in ipv6_str and '::' in ipv6_str:
-        parts = ipv6_str.split(':')
-        ipv4_part = parts[-1]
-        return '::ffff:' + ipv4_part
-
-    # 移除所有前导零并小写
-    segments = []
-    for segment in ipv6_str.split(':'):
-        if segment == '':
-            segments.append('')
+    if is_wildcard:
+        # 处理 IPv6 通配且要求包含 IPv4 的情况
+        if host_type == AddressFamily.IPV6 and include_ipv4:
+            # 获取所有 IP（包含 IPv4 和 IPv6）
+            all_ips = getip(
+                details=False,
+                family=None,
+                ignore_loopback=False,
+                ignore_link_local=True,
+                include_wildcard=False
+            )
+            urls = []
+            for addr in all_ips:
+                if ':' in addr:  # IPv6
+                    urls.append(f"{protocol}://[{addr}]:{port}")
+                else:             # IPv4
+                    urls.append(f"{protocol}://{addr}:{port}")
+            return urls
         else:
-            # 移除前导零, 但保留至少一个字符
-            segment = segment.lstrip('0') or '0'
-            segments.append(segment.lower())
+            # 仅获取对应地址族的 IP
+            all_ips = getip(
+                details=False,
+                family=host_type,
+                ignore_loopback=False,
+                ignore_link_local=True,
+                include_wildcard=False
+            )
+            if host_type == AddressFamily.IPV6:
+                return [f"{protocol}://[{addr}]:{port}" for addr in all_ips]
+            else:
+                return [f"{protocol}://{addr}:{port}" for addr in all_ips]
 
-    # 重建地址
-    normalized = ':'.join(segments)
-
-    # 压缩最长的连续零段（但避免压缩单个零段）
-    best_start = -1
-    best_length = 0
-    current_start = -1
-    current_length = 0
-
-    # 查找最长的连续空段
-    for i, seg in enumerate(segments):
-        if seg == '' or seg == '0':
-            if current_start == -1:
-                current_start = i
-            current_length += 1
-        else:
-            if current_length > best_length:
-                best_start = current_start
-                best_length = current_length
-            current_start = -1
-            current_length = 0
-
-    # 检查末尾的连续零
-    if current_length > best_length:
-        best_start = current_start
-        best_length = current_length
-
-    # 如果有需要压缩的段
-    if best_length > 1:
-        # 构建压缩后的地址
-        before = ':'.join(segments[:best_start])
-        after = ':'.join(segments[best_start + best_length:])
-
-        # 处理开头和结尾的特殊情况
-        if not before and not after:
-            return "::"
-        elif not before:
-            return "::" + after
-        elif not after:
-            return before + "::"
-        else:
-            return before + "::" + after
-
-    return normalized
+    # 非通配地址：直接返回该地址的 URL
+    if host_type == AddressFamily.IPV6:
+        return [f"{protocol}://[{normalized}]:{port}"]
+    else:
+        return [f"{protocol}://{normalized}:{port}"]

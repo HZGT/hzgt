@@ -13,7 +13,7 @@ from logging import Logger
 from typing import Dict, Optional, Any, List, Tuple, Union
 
 from .sqlcore import SQLutilop, QueryBuilder, DBAdapter
-from hzgt.core.log import set_log
+from ...core.log import set_log
 
 
 class JoinType(Enum):

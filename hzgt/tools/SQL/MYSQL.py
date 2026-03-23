@@ -10,7 +10,7 @@ import pymysql
 from pymysql.connections import Connection
 from pymysql.cursors import DictCursor, SSCursor
 
-from hzgt.core.log import set_log
+from ...core.log import set_log
 from .sqlcore import SQLExecutionStatus, JoinType
 from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
 from .sqlhistory import SQLHistoryRecord, SQLHistory
@@ -712,7 +712,6 @@ class MySQLQueryBuilder(QueryBuilder):
             if offset is not None:
                 sql += f" OFFSET %s"
                 params.append(int(offset))
-
         return sql, params
 
     def build_insert(self,
@@ -1938,7 +1937,7 @@ class Mysqlop(SQLutilop):
             raise ValueError("未指定表名")
 
         self.logger.debug(f"获取表[{tablename}]的索引信息")
-        return self._query_sql(f"SHOW INDEX FROM {self._escape_identifier(tablename)}",
+        return self._query_sql(f"DESCRIBE {self._escape_identifier(tablename)}",
                                user_tag=f"获取表{tablename}的索引信息")
 
     def create_db(self, dbname: str, bool_autoselect: bool = True):
@@ -2041,6 +2040,8 @@ class Mysqlop(SQLutilop):
             **kwargs
         )
 
+        print(sql)
+
         # 执行SQL
         self._execute_sql(sql, user_tag=f"创建表{tablename}")
         self.logger.info(f"创建表 {tablename} 成功")
@@ -2103,6 +2104,7 @@ class Mysqlop(SQLutilop):
 
     def select(self, tablename: str = "", conditions: Dict = None,
                order: Dict[str, bool] = None, fields: List[str] = None,
+               group_by: List[str] = None,
                limit: int = None, offset: int = None, bool_dict: bool = False,
                stream: bool = False, size: int = 5000,
                use_index_hint: bool = False, use_server_side_cursor: bool = True, **kwargs) -> Union[
@@ -2115,6 +2117,8 @@ class Mysqlop(SQLutilop):
             conditions: 查询条件
             order: 排序 {列名: 是否升序}
             fields: 要查询的字段列表
+            group_by: 分组
+
             limit: 限制返回记录数
             offset: 跳过前N条记录
             bool_dict: 是否以字典形式返回结果 {列名: [列值列表]}，默认为False
@@ -2139,6 +2143,7 @@ class Mysqlop(SQLutilop):
             fields=fields,
             conditions=conditions,
             order=order,
+            group_by=group_by,
             limit=limit,
             offset=offset,
             **kwargs
@@ -2179,6 +2184,7 @@ class Mysqlop(SQLutilop):
             )
 
         # 普通查询
+        # print(sql,"\n", params, "\n",sql % params)
         return self._query_sql(sql, params, bool_dict=bool_dict, user_tag=f"查询表{tablename}")
 
     def update(self, tablename: str = '', update_values: Dict[str, Any] = None,
@@ -2290,7 +2296,7 @@ class Mysqlop(SQLutilop):
             fields=["COUNT(*) as total"],
             conditions=conditions
         )
-        print(count_sql, count_params)
+        # print(count_sql, count_params)
 
         total_result = self._query_one(count_sql, count_params, user_tag="分页查询-计数")
         total = total_result["total"] if total_result else 0
@@ -2541,8 +2547,14 @@ class Mysqlop(SQLutilop):
             host: 用户登录主机，默认localhost
         """
         host = host or "localhost"
-        sql = f"ALTER USER '{username}'@'{host}' IDENTIFIED BY '{new_password}'"
-        self._execute_sql(sql, user_tag="修改用户密码")
+        # 使用参数化查询，%s 占位符由 execute 安全处理
+        # sql = "ALTER USER %s@%s IDENTIFIED BY %s"
+        # 注意：用户名和主机名也需要转义，但 ALTER USER 的语法要求它们是标识符，不能参数化。
+        # 为安全起见，我们对用户名和主机名进行标识符转义
+        safe_user = self._escape_identifier(username)
+        safe_host = self._escape_identifier(host)
+        sql = f"ALTER USER {safe_user}@{safe_host} IDENTIFIED BY %s"
+        self._execute_sql(sql, (new_password,), user_tag="修改用户密码")
         self.logger.info("修改密码成功")
 
     def get_permissions(self):

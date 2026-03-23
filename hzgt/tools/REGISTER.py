@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from hzgt.core.strop import restrop
+from ..core.strop import restrop
 
 
 class Func_Register(dict):
