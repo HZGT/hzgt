@@ -10,19 +10,40 @@
   - [start()](#start)
   - [shutdown()](#shutdown)
 - [Ftpclient](#ftpclient)
-  - [dir()](#dir)
-  - [pwd()](#pwd)
-  - [quit()](#quit)
-  - [getfile()](#getfile)
-  - [upload()](#upload)
-  - [size()](#size)
-  - [list_show()](#list_show)
-  - [nlst()](#nlst)
-  - [rmd()](#rmd)
-  - [delete()](#delete)
-  - [rename()](#rename)
-  - [cwd()](#cwd)
-  - [mkd()](#mkd)
+  - [基本操作](#基本操作)
+    - [dir()](#dir)
+    - [pwd()](#pwd)
+    - [quit()](#quit)
+    - [cwd()](#cwd)
+    - [nlst() / list_files()](#nlst--list_files)
+    - [list_details()](#list_details)
+    - [rename()](#rename)
+    - [delete()](#delete)
+    - [rmd()](#rmd)
+    - [mkd()](#mkd)
+    - [size()](#size)
+    - [exists()](#exists)
+    - [is_dir()](#is_dir)
+    - [is_file()](#is_file)
+  - [传输模式](#传输模式)
+    - [set_passive()](#set_passive)
+    - [set_mode()](#set_mode)
+  - [文件上传](#文件上传)
+    - [upload()](#upload)
+    - [upload_dir()](#upload_dir)
+    - [upload_files()](#upload_files)
+  - [文件下载](#文件下载)
+    - [download()](#download)
+    - [download_dir()](#download_dir)
+    - [download_files()](#download_files)
+  - [目录管理](#目录管理)
+    - [rmtree()](#rmtree)
+  - [连接管理](#连接管理)
+    - [send_command()](#send_command)
+    - [chmod()](#chmod)
+    - [is_connected](#is_connected)
+    - [keep_alive()](#keep_alive)
+    - [reconnect()](#reconnect)
 
 ## 类说明
 
@@ -170,25 +191,45 @@ fs.set_log("ftps.log")
 print("FTP服务器启动中...")
 print("使用 Ctrl+C 停止服务器")
 try:
-    fs.start(host_res="0.0.0.0", port=2121)
+    fs.start(host="0.0.0.0", port=2121)
 except KeyboardInterrupt:
     print("\n正在关闭FTP服务器...")
     fs.shutdown()
     print("FTP服务器已关闭")
 ```
 
+---
+
 ### Ftpclient
 
-**功能**：创建 FTP 客户端，支持连接 FTP 服务器、上传下载文件等操作。
+**功能**：创建 FTP 客户端，支持连接 FTP 服务器、文件上传下载（带进度条）、目录递归操作、断点续传、批量操作等功能。
 
 **构造方法参数**：
 - `host`：目标主机IP
 - `port`：端口，默认 2121
 - `username`：用户昵称，默认为 anonymous
 - `password`：密码
+- `timeout`：连接超时时间（秒），默认 30
 - `encoding`：默认编码为 UTF-8
+- `passive`：是否使用被动模式，默认 True
+- `logger`：自定义日志器
 
-**方法**：
+**使用示例**：
+```python
+from hzgt.tools import Ftpclient
+
+# 基本连接
+ftp_client = Ftpclient("192.168.1.100", 2121, "user", "123456")
+
+# 使用 with 语句（推荐）
+with Ftpclient("192.168.1.100", 2121, "user", "123456") as ftp_client:
+    # 自动关闭连接
+    pass
+```
+
+---
+
+## 基本操作
 
 #### dir()
 **功能**：打印目录的文件信息。
@@ -217,77 +258,27 @@ print(f"当前目录: {current_dir}")
 ftp_client.quit()
 ```
 
-#### getfile()
-**功能**：从服务器下载文件保存至本地。
+#### cwd()
+**功能**：切换远程工作目录。
 
 **参数**：
-- `server_filename`：服务器上待下载的文件，文件格式: "/path/to/thing.txt"
-- `savepath`：保存路径，默认保存在同目录下新建文件夹 "FTP_Files"
-- `savename`：保存的文件名，为空则默认使用服务器文件名
-- `blocksize`：下载块大小
+- `path`：目标路径
+
+**返回值**：服务器返回的响应字符串
 
 **使用示例**：
 ```python
-# 下载文件到默认路径
-ftp_client.getfile("/public/file.txt")
-
-# 下载文件到指定路径并自定义文件名
-ftp_client.getfile("/public/data.zip", savepath="downloads", savename="backup.zip")
+ftp_client.cwd("/public")
+print(f"当前目录: {ftp_client.pwd()}")
 ```
 
-#### upload()
-**功能**：上传文件至当前工作目录。
+#### nlst() / list_files()
+**功能**：获取指定目录下的文件和文件夹名称列表（NLST 命令）。
 
 **参数**：
-- `local_file`：本地文件路径
-- `server_savename`：新命名，默认使用本地文件名
-- `blocksize`：上传块大小
+- `path`：远程目录路径，默认为当前目录
 
-**使用示例**：
-```python
-# 上传文件到服务器
-ftp_client.upload("local_file.txt")
-
-# 上传文件并自定义服务器文件名
-ftp_client.upload("local_data.csv", server_savename="data_2024.csv")
-```
-
-#### size()
-**功能**：获取服务器上文件的大小。
-
-**参数**：
-- `sname`：目标文件路径
-
-**返回值**：文件大小（字节）
-
-**使用示例**：
-```python
-file_size = ftp_client.size("/public/file.txt")
-print(f"文件大小: {file_size} 字节")
-```
-
-#### list_show()
-**功能**：打印服务器目录里的文件列表。
-
-**参数**：
-- `spath`：服务器的目录，默认查看当前工作目录
-
-**使用示例**：
-```python
-# 查看当前目录
-ftp_client.list_show()
-
-# 查看指定目录
-ftp_client.list_show("/public")
-```
-
-#### nlst()
-**功能**：获取目标目录中所有的文件夹/文件。
-
-**参数**：
-- `spath`：目标目录
-
-**返回值**：所有文件夹/文件组成的列表
+**返回值**：名称列表
 
 **使用示例**：
 ```python
@@ -297,64 +288,392 @@ for file in files:
     print(f"  - {file}")
 ```
 
-#### rmd()
-**功能**：删除目标目录。
+#### list_details()
+**功能**：获取指定目录下文件和文件夹的详细信息（使用 MLSD 命令）。
 
 **参数**：
-- `spath`：目标目录
+- `path`：远程目录路径
+
+**返回值**：字典列表，每个字典包含 name, type, size, modify, perm 等字段
 
 **使用示例**：
 ```python
-ftp_client.rmd("/temp")
-```
-
-#### delete()
-**功能**：删除远程文件。
-
-**参数**：
-- `sname`：远程文件名
-
-**使用示例**：
-```python
-ftp_client.delete("/public/old_file.txt")
+items = ftp_client.list_details("/public")
+for item in items:
+    print(f"{item['name']} - 类型: {item.get('type')}, 大小: {item.get('size')}")
 ```
 
 #### rename()
-**功能**：将文件 `oldsname` 修改名称为 `newsname`。
+**功能**：重命名远程文件或目录。
 
 **参数**：
-- `oldsname`：旧文件名
-- `newsname`：新文件名
+- `old`：旧文件名
+- `new`：新文件名
 
 **使用示例**：
 ```python
 ftp_client.rename("/public/data.txt", "/public/data_updated.txt")
 ```
 
-#### cwd()
-**功能**：设置FTP当前操作的路径。
+#### delete()
+**功能**：删除远程文件。
 
 **参数**：
-- `spath`：需要设置为当前工作路径的路径
+- `filename`：远程文件名
 
 **使用示例**：
 ```python
-ftp_client.cwd("/public")
-print(f"当前目录: {ftp_client.pwd()}")
+ftp_client.delete("/public/old_file.txt")
+```
+
+#### rmd()
+**功能**：删除空目录。
+
+**参数**：
+- `dirname`：目标目录
+
+**使用示例**：
+```python
+ftp_client.rmd("/temp")
 ```
 
 #### mkd()
 **功能**：创建新目录。
 
 **参数**：
-- `spath`：新目录路径
+- `dirname`：新目录路径
 
 **使用示例**：
 ```python
 ftp_client.mkd("/public/new_folder")
 ```
 
-**完整使用示例**：
+#### size()
+**功能**：获取远程文件大小（字节）。
+
+**参数**：
+- `filename`：目标文件路径
+
+**返回值**：文件大小（字节）
+
+**使用示例**：
+```python
+file_size = ftp_client.size("/public/file.txt")
+print(f"文件大小: {file_size} 字节")
+```
+
+#### exists()
+**功能**：检查远程文件或目录是否存在。
+
+**参数**：
+- `path`：远程路径
+
+**返回值**：True 如果存在，否则 False
+
+**使用示例**：
+```python
+if ftp_client.exists("/public/file.txt"):
+    print("文件存在")
+else:
+    print("文件不存在")
+```
+
+#### is_dir()
+**功能**：检查远程路径是否为目录。
+
+**参数**：
+- `path`：远程路径
+
+**返回值**：True 如果是目录，否则 False
+
+**使用示例**：
+```python
+if ftp_client.is_dir("/public/folder"):
+    print("这是一个目录")
+```
+
+#### is_file()
+**功能**：检查远程路径是否为文件。
+
+**参数**：
+- `path`：远程路径
+
+**返回值**：True 如果是文件，否则 False
+
+**使用示例**：
+```python
+if ftp_client.is_file("/public/file.txt"):
+    print("这是一个文件")
+```
+
+---
+
+## 传输模式
+
+#### set_passive()
+**功能**：设置是否使用被动模式。
+
+**参数**：
+- `passive`：True 启用被动模式，False 启用主动模式
+
+**使用示例**：
+```python
+ftp_client.set_passive(True)  # 启用被动模式
+```
+
+#### set_mode()
+**功能**：设置传输模式：'I' 二进制，'A' ASCII。
+
+**参数**：
+- `mode`：'I' 或 'A'
+
+**使用示例**：
+```python
+ftp_client.set_mode('I')  # 设置为二进制模式
+```
+
+---
+
+## 文件上传
+
+#### upload()
+**功能**：上传文件到当前远程目录，支持断点续传和进度条显示。
+
+**参数**：
+- `local_file`：本地文件路径
+- `remote_name`：远程文件名，默认使用本地文件名
+- `blocksize`：传输块大小（字节），默认 8192
+- `callback`：进度回调函数，接收 (已传输字节, 总字节)
+- `resume`：是否断点续传，默认 False
+
+**使用示例**：
+```python
+# 基本上传
+ftp_client.upload("local_file.txt")
+
+# 上传并自定义远程文件名
+ftp_client.upload("local_data.csv", remote_name="data_2024.csv")
+
+# 断点续传上传
+ftp_client.upload("large_file.zip", resume=True)
+
+# 带自定义回调的上传
+def progress_callback(sent, total):
+    print(f"进度: {sent}/{total} bytes")
+
+ftp_client.upload("file.txt", callback=progress_callback)
+```
+
+#### upload_dir()
+**功能**：递归上传本地目录到远程，自动创建目录结构。
+
+**参数**：
+- `local_dir`：本地目录路径
+- `remote_dir`：远程目标目录，默认为当前目录下的同名文件夹
+- `blocksize`：传输块大小，默认 8192
+- `callback`：每个文件上传进度的回调，接收 (相对路径, 已传字节, 总字节)
+
+**使用示例**：
+```python
+# 上传整个目录
+ftp_client.upload_dir("./local_folder", "/remote/folder")
+
+# 带进度回调的上传
+def file_progress(rel_path, sent, total):
+    print(f"{rel_path}: {sent}/{total} bytes")
+
+ftp_client.upload_dir("./src", "/backup/src", callback=file_progress)
+```
+
+#### upload_files()
+**功能**：批量上传多个文件到远程目录。
+
+**参数**：
+- `local_files`：本地文件路径列表
+- `remote_dir`：远程目标目录
+- `blocksize`：传输块大小，默认 8192
+- `callback`：每个文件上传进度的回调，接收 (文件名, 已传字节, 总字节)
+
+**使用示例**：
+```python
+# 批量上传文件
+files = ["file1.txt", "file2.csv", "data.json"]
+ftp_client.upload_files(files, "/uploads")
+
+# 带进度回调
+def file_progress(fname, sent, total):
+    print(f"{fname}: {sent}/{total}")
+
+ftp_client.upload_files(files, callback=file_progress)
+```
+
+---
+
+## 文件下载
+
+#### download()
+**功能**：下载远程文件到本地，支持断点续传和进度条显示。
+
+**参数**：
+- `remote_file`：远程文件路径（可以是绝对路径或相对当前目录）
+- `local_path`：本地保存目录，默认 "."
+- `local_name`：本地文件名，默认使用远程文件名
+- `blocksize`：传输块大小，默认 8192
+- `resume`：是否断点续传，默认 False
+- `callback`：进度回调，接收 (已传字节, 总字节)
+
+**使用示例**：
+```python
+# 基本下载
+ftp_client.download("/public/file.txt", "./downloads")
+
+# 断点续传下载
+ftp_client.download("/public/large_file.zip", resume=True)
+
+# 自定义文件名
+ftp_client.download("/public/data.csv", "./data", local_name="backup.csv")
+
+# 带进度回调
+def progress_callback(sent, total):
+    print(f"进度: {sent}/{total} bytes")
+
+ftp_client.download("/public/file.txt", callback=progress_callback)
+```
+
+#### download_dir()
+**功能**：递归下载远程目录到本地，保持目录结构。
+
+**参数**：
+- `remote_dir`：远程目录路径
+- `local_dir`：本地保存根目录，默认 "."
+- `blocksize`：传输块大小，默认 8192
+- `callback`：每个文件下载进度的回调，接收 (相对路径, 已传字节, 总字节)
+
+**使用示例**：
+```python
+# 下载整个目录
+ftp_client.download_dir("/remote/folder", "./local_folder")
+
+# 带进度回调
+def file_progress(rel_path, sent, total):
+    print(f"{rel_path}: {sent}/{total} bytes")
+
+ftp_client.download_dir("/backup/src", "./src", callback=file_progress)
+```
+
+#### download_files()
+**功能**：批量下载多个远程文件到本地目录。
+
+**参数**：
+- `remote_files`：远程文件路径列表
+- `local_dir`：本地保存根目录，默认 "."
+- `blocksize`：传输块大小，默认 8192
+- `resume`：是否断点续传，默认 False
+- `callback`：每个文件下载进度的回调，接收 (文件名, 已传字节, 总字节)
+
+**使用示例**：
+```python
+# 批量下载文件
+files = ["/public/file1.txt", "/public/file2.csv", "/public/data.json"]
+ftp_client.download_files(files, "./downloads")
+
+# 断点续传批量下载
+ftp_client.download_files(files, "./downloads", resume=True)
+
+# 带进度回调
+def file_progress(fname, sent, total):
+    print(f"{fname}: {sent}/{total}")
+
+ftp_client.download_files(files, callback=file_progress)
+```
+
+---
+
+## 目录管理
+
+#### rmtree()
+**功能**：递归删除远程目录及其所有内容。
+
+**参数**：
+- `remote_dir`：远程目录路径
+
+**使用示例**：
+```python
+ftp_client.rmtree("/temp/old_folder")
+```
+
+---
+
+## 连接管理
+
+#### send_command()
+**功能**：发送原始 FTP 命令并返回响应。
+
+**参数**：
+- `cmd`：FTP 命令字符串（如 "SYST"）
+
+**返回值**：服务器响应字符串
+
+**使用示例**：
+```python
+response = ftp_client.send_command("SYST")
+print(f"系统类型: {response}")
+```
+
+#### chmod()
+**功能**：修改远程文件或目录的权限（SITE CHMOD 命令）。
+
+**参数**：
+- `path`：远程路径
+- `mode`：权限模式（八进制，如 0o755）
+
+**使用示例**：
+```python
+ftp_client.chmod("/public/script.sh", 0o755)  # 设置为可执行
+```
+
+#### is_connected
+**功能**：检查连接是否活跃（属性）。
+
+**返回值**：True 如果连接正常，否则 False
+
+**使用示例**：
+```python
+if ftp_client.is_connected:
+    print("连接正常")
+else:
+    print("连接已断开")
+```
+
+#### keep_alive()
+**功能**：保持连接活跃（定期发送 NOOP 命令）。注意：这是一个阻塞方法，适合在后台线程中使用。
+
+**参数**：
+- `interval`：发送 NOOP 的间隔秒数，默认 60
+
+**使用示例**：
+```python
+import threading
+
+# 在后台线程中保持连接活跃
+thread = threading.Thread(target=ftp_client.keep_alive, args=(60,))
+thread.daemon = True
+thread.start()
+```
+
+#### reconnect()
+**功能**：重新连接服务器（使用当前参数）。
+
+**使用示例**：
+```python
+# 重新连接
+ftp_client.reconnect()
+print("重新连接成功")
+```
+
+---
+
+## 完整使用示例
 
 ```python
 from hzgt.tools import Ftpclient
@@ -372,15 +691,28 @@ with Ftpclient(
     
     # 列出指定目录内容
     print("\n=== 公共目录内容 ===")
-    ftp_client.list_show("/public")
+    files = ftp_client.nlst("/public")
+    for f in files:
+        print(f"  - {f}")
     
-    # 上传文件
+    # 检查文件是否存在
+    if ftp_client.exists("/public/sample.txt"):
+        print("\n文件存在，开始下载...")
+        # 下载文件（支持断点续传）
+        ftp_client.download("/public/sample.txt", "./downloads", resume=True)
+    
+    # 上传文件（支持断点续传）
     print("\n=== 上传文件 ===")
-    ftp_client.upload("local_file.txt", server_savename="uploaded_file.txt")
+    ftp_client.upload("local_file.txt", resume=True)
     
-    # 下载文件
-    print("\n=== 下载文件 ===")
-    ftp_client.getfile("/public/sample.zip", savepath="downloads")
+    # 批量上传
+    print("\n=== 批量上传 ===")
+    files_to_upload = ["file1.txt", "file2.csv"]
+    ftp_client.upload_files(files_to_upload, "/uploads")
+    
+    # 上传整个目录
+    print("\n=== 上传目录 ===")
+    ftp_client.upload_dir("./src", "/backup/src")
     
     # 创建目录
     print("\n=== 创建目录 ===")
@@ -391,6 +723,10 @@ with Ftpclient(
     print("\n=== 删除文件 ===")
     ftp_client.delete("/public/test_file.txt")
     print("文件删除成功")
+    
+    # 检查连接状态
+    if ftp_client.is_connected:
+        print("\n连接状态: 正常")
 
 print("FTP操作完成，连接已关闭")
 ```

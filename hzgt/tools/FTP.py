@@ -352,6 +352,15 @@ class Ftpclient:
         self.__ftpc.dir(*args)
         print("==========")
 
+    def nlst(self, path: str = ""):
+        """
+        获取指定目录下的文件和文件夹名称列表（NLST 命令）。
+
+        :param path: 远程目录路径，默认为当前目录
+        :return: 名称列表
+        """
+        return self.__ftpc.nlst(path or self.pwd())
+
     def list_files(self, path: str = "") -> List[str]:
         """
         获取指定目录下的文件和文件夹名称列表（NLST 命令）。
@@ -406,6 +415,64 @@ class Ftpclient:
         self.__ftpc.voidcmd('TYPE I')
         return self.__ftpc.size(filename)
 
+    def exists(self, path: str) -> bool:
+        """
+        检查远程文件或目录是否存在。
+
+        :param path: 远程路径
+        :return: True 如果存在，否则 False
+        """
+        try:
+            original_pwd = self.pwd()
+            # 尝试切换到该路径或获取其信息
+            if path.endswith('/'):
+                self.cwd(path)
+                self.cwd(original_pwd)
+            else:
+                # 尝试获取父目录列表
+                parent = os.path.dirname(path)
+                basename = os.path.basename(path)
+                if parent:
+                    self.cwd(parent)
+                items = self.list_details('.')
+                if parent:
+                    self.cwd(original_pwd)
+                return any(item['name'] == basename for item in items)
+            return True
+        except:
+            return False
+
+    def is_dir(self, path: str) -> bool:
+        """
+        检查远程路径是否为目录。
+
+        :param path: 远程路径
+        :return: True 如果是目录，否则 False
+        """
+        try:
+            original_pwd = self.pwd()
+            self.cwd(path)
+            self.cwd(original_pwd)
+            return True
+        except:
+            return False
+
+    def is_file(self, path: str) -> bool:
+        """
+        检查远程路径是否为文件。
+
+        :param path: 远程路径
+        :return: True 如果是文件，否则 False
+        """
+        try:
+            # 如果能获取大小且不是目录，则是文件
+            if self.is_dir(path):
+                return False
+            self.size(path)
+            return True
+        except:
+            return False
+
     # ---------- 传输模式 ----------
     def set_passive(self, passive: bool = True) -> None:
         """设置是否使用被动模式。"""
@@ -426,7 +493,7 @@ class Ftpclient:
 
     # ---------- 文件上传 ----------
     def upload(self, local_file: str, remote_name: str = "", blocksize: int = 8192,
-               callback: Optional[Callable[[int, int], None]] = None) -> None:
+               callback: Optional[Callable[[int, int], None]] = None, resume: bool = False) -> None:
         """
         上传文件到当前远程目录。
 
@@ -434,6 +501,7 @@ class Ftpclient:
         :param remote_name: 远程文件名，默认使用本地文件名
         :param blocksize: 传输块大小（字节）
         :param callback: 进度回调函数，接收 (已传输字节, 总字节)
+        :param resume: 是否断点续传（若远程已存在部分文件，则从断点处继续）
         :raises FileNotFoundError: 本地文件不存在
         :raises FTPError: 上传失败
         """
@@ -443,10 +511,28 @@ class Ftpclient:
         remote_name = remote_name or os.path.basename(local_file)
         file_size = os.path.getsize(local_file)
 
+        # 断点续传：获取远程已存在大小
+        remote_size = 0
+        if resume and self.exists(remote_name):
+            try:
+                remote_size = self.size(remote_name)
+                if remote_size >= file_size:
+                    self.__logger.info(f"✅ 文件 {remote_name} 已完整存在 ({file_size} bytes)，跳过上传。")
+                    return
+                elif remote_size > 0:
+                    self.__logger.info(f"🔄 文件 {remote_name} 已存在部分数据 ({remote_size}/{file_size} bytes)，将从断点继续上传。")
+            except:
+                remote_size = 0
+
         with open(local_file, 'rb') as f:
+            # 如果有断点，跳转到指定位置
+            if resume and remote_size > 0:
+                f.seek(remote_size)
+                self.__ftpc.voidcmd(f'REST {remote_size}')
+
             # 如果没有回调，使用 tqdm 进度条
             if callback is None:
-                with trange(file_size, desc=f'上传 {truncate_fname(remote_name)}',
+                with trange(file_size, initial=remote_size, desc=f'上传 {truncate_fname(remote_name)}',
                             unit='B', unit_divisor=1024, unit_scale=True) as t:
                     def _inner_cb(data):
                         t.update(len(data))
@@ -456,7 +542,7 @@ class Ftpclient:
                     self.__ftpc.storbinary(f'STOR {remote_name}', f, blocksize, callback=_inner_cb)
             else:
                 # 自定义回调
-                total = [0]
+                total = [remote_size]
 
                 def _cb(data):
                     total[0] += len(data)
@@ -528,6 +614,39 @@ class Ftpclient:
 
             # 处理子目录（由 walk 自动处理）
 
+    def upload_files(self, local_files: List[str], remote_dir: str = "", blocksize: int = 8192,
+                     callback: Optional[Callable[[str, int, int], None]] = None) -> None:
+        """
+        批量上传多个文件到远程目录。
+
+        :param local_files: 本地文件路径列表
+        :param remote_dir: 远程目标目录
+        :param blocksize: 传输块大小
+        :param callback: 每个文件上传进度的回调，接收 (文件名, 已传字节, 总字节)
+        """
+        # 确保远程目录存在
+        if remote_dir:
+            try:
+                self.cwd(remote_dir)
+            except ftplib.error_perm:
+                self.mkd(remote_dir)
+                self.cwd(remote_dir)
+
+        for local_file in local_files:
+            if not os.path.isfile(local_file):
+                self.__logger.warning(f"跳过不存在的文件: {local_file}")
+                continue
+
+            remote_name = os.path.basename(local_file)
+            if callback:
+                def make_cb(fname=remote_name):
+                    def inner(sent, total):
+                        callback(fname, sent, total)
+                    return inner
+                self.upload(local_file, remote_name, blocksize, callback=make_cb())
+            else:
+                self.upload(local_file, remote_name, blocksize)
+
     # ---------- 文件下载 ----------
     def download(self, remote_file: str, local_path: str = ".", local_name: str = "",
                  blocksize: int = 8192, resume: bool = False,
@@ -559,13 +678,14 @@ class Ftpclient:
         mode = 'wb'
         if resume and os.path.exists(local_filepath):
             local_size = os.path.getsize(local_filepath)
-            if local_size < file_size:
+            if local_size >= file_size:
+                self.__logger.info(f"✅ 文件 {local_filename} 已完整存在 ({file_size} bytes)，跳过下载。")
+                return
+            elif local_size > 0:
+                self.__logger.info(f"🔄 文件 {local_filename} 已存在部分数据 ({local_size}/{file_size} bytes)，将从断点继续下载。")
                 mode = 'ab'
                 # 发送 REST 命令设置偏移量
                 self.__ftpc.voidcmd(f'REST {local_size}')
-            else:
-                self.__logger.info(f"文件 {local_filename} 已完整存在，跳过下载。")
-                return
 
         with open(local_filepath, mode) as f:
             if callback is None:
@@ -599,7 +719,7 @@ class Ftpclient:
         # 切换到远程目录，保存当前路径
         original_pwd = self.pwd()
         self.cwd(remote_dir)
-        remote_base = remote_dir.rstrip('/')
+        # remote_base = remote_dir.rstrip('/')
 
         # 获取当前目录下的所有项目
         items = self.list_details('.')
@@ -629,6 +749,35 @@ class Ftpclient:
 
         # 恢复原目录
         self.cwd(original_pwd)
+
+    def download_files(self, remote_files: List[str], local_dir: str = ".", blocksize: int = 8192,
+                       resume: bool = False, callback: Optional[Callable[[str, int, int], None]] = None) -> None:
+        """
+        批量下载多个远程文件到本地目录。
+
+        :param remote_files: 远程文件路径列表
+        :param local_dir: 本地保存根目录
+        :param blocksize: 传输块大小
+        :param resume: 是否断点续传
+        :param callback: 每个文件下载进度的回调，接收 (文件名, 已传字节, 总字节)
+        """
+        # 确保本地目录存在
+        os.makedirs(local_dir, exist_ok=True)
+
+        for remote_file in remote_files:
+            if not self.exists(remote_file):
+                self.__logger.warning(f"跳过不存在的远程文件: {remote_file}")
+                continue
+
+            local_name = os.path.basename(remote_file)
+            if callback:
+                def make_cb(fname=local_name):
+                    def inner(sent, total):
+                        callback(fname, sent, total)
+                    return inner
+                self.download(remote_file, local_dir, local_name, blocksize, resume, make_cb())
+            else:
+                self.download(remote_file, local_dir, local_name, blocksize, resume)
 
     # ---------- 递归删除 ----------
     def rmtree(self, remote_dir: str) -> None:
@@ -669,6 +818,47 @@ class Ftpclient:
         :return: 服务器响应字符串
         """
         return self.__ftpc.voidcmd(cmd)
+
+    def chmod(self, path: str, mode: int) -> None:
+        """
+        修改远程文件或目录的权限（SITE CHMOD 命令）。
+
+        :param path: 远程路径
+        :param mode: 权限模式（八进制，如 0o755）
+        :raises FTPError: 如果服务器不支持或操作失败
+        """
+        try:
+            self.__ftpc.voidcmd(f'SITE CHMOD {oct(mode)[2:]} {path}')
+        except ftplib.error_perm as e:
+            raise Exception(f"权限修改失败: {e}") from None
+
+    @property
+    def is_connected(self) -> bool:
+        """
+        检查连接是否活跃。
+
+        :return: True 如果连接正常，否则 False
+        """
+        try:
+            self.__ftpc.voidcmd('NOOP')
+            return True
+        except:
+            return False
+
+    def keep_alive(self, interval: int = 60) -> None:
+        """
+        保持连接活跃（定期发送 NOOP 命令）。
+        注意：这是一个阻塞方法，适合在后台线程中使用。
+
+        :param interval: 发送 NOOP 的间隔秒数
+        """
+        import time
+        while self.is_connected:
+            time.sleep(interval)
+            try:
+                self.__ftpc.voidcmd('NOOP')
+            except:
+                break
 
     # ---------- 重连 ----------
     def reconnect(self) -> None:

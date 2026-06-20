@@ -3,8 +3,9 @@ dotenv
 paho-mqtt
 pyftpdlib
 PyMySQL
-python-dotenv
-requests
+python-dotenv==1.2.2
+requests==2.33.0
 sqlalchemy
 psutil
 tabulate
+python-multipart

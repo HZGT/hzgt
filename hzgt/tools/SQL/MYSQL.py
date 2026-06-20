@@ -15,6 +15,7 @@ from .sqlcore import SQLExecutionStatus, JoinType
 from .sqlcore import SQLutilop, ConnectionPool, QueryBuilder, DBAdapter
 from .sqlhistory import SQLHistoryRecord, SQLHistory
 
+
 # 聚合函数列表
 AGGREGATE_FUNCTIONS = {
     'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'GROUP_CONCAT', 'STD', 'STDDEV',
@@ -1145,8 +1146,8 @@ class MySQLConnectionPool(ConnectionPool):
 class Mysqlop(SQLutilop):
     """MySQL操作工具"""
 
-    def __init__(self, host: str, port: int, user: str, passwd: str, database: str = None, charset: str = "utf8",
-                 logger: Logger= None, autoreconnect: bool = True,
+    def __init__(self, host: str, port: int, user: str, passwd: str, database: str = None, charset: str = "utf8mb4",
+                 logger: Logger = None, autoreconnect: bool = True,
                  reconnect_retries: int = 3,
                  pool_size: int = 5, enable_history: bool = True, history_max_records: int = 100,
                  history_auto_save: bool = False, history_save_path: Optional[str] = None):
@@ -1536,10 +1537,51 @@ class Mysqlop(SQLutilop):
                     self.close()
                 self.__connection = self.connection_pool.get_connection()
                 self.logger.info(f"MySQL连接成功(数据库: {self.__selected_db})")
+                
+                # 记录连接历史
+                if self.enable_history and self.__history:
+                    # 构造完整的连接信息（密码脱敏）
+                    host = self.adapter.config["host"]
+                    port = self.adapter.config["port"]
+                    user = self.adapter.config["user"]
+                    database = self.__selected_db or "N/A"
+                    
+                    # 使用注释形式记录连接信息，明确标注这不是可执行SQL
+                    connect_sql = f"mysql -h {host} -P {port} -u {user} -p -D {database}"
+                    
+                    self._record_sql_history(
+                        sql=connect_sql,
+                        params={"host": host, "port": port, 
+                                "user": user, "database": database,
+                                "password": "***"},  # 密码脱敏
+                        duration=0.0,
+                        status=SQLExecutionStatus.SUCCESS,
+                        user_tag="数据库连接"
+                    )
                 return
             except Exception as e:
                 self.logger.error(f"连接失败(尝试 {attempt}/{self.reconnect_retries}): {e}")
                 if attempt == self.reconnect_retries:
+                    # 记录连接失败历史
+                    if self.enable_history and self.__history:
+                        host = self.adapter.config["host"]
+                        port = self.adapter.config["port"]
+                        user = self.adapter.config["user"]
+                        database = self.__selected_db or "N/A"
+                        
+                        # 使用注释形式记录连接信息（密码脱敏）
+                        connect_sql = f"-- CONNECT: mysql -h {host} -P {port} -u {user} -p*** -D {database} [FAILED]"
+                        
+                        self._record_sql_history(
+                            sql=connect_sql,
+                            params={"host": host, "port": port, 
+                                    "user": user, "database": database,
+                                    "password": "***"},  # 密码脱敏
+                            duration=0.0,
+                            status=SQLExecutionStatus.ERROR,
+                            error_message=str(e),
+                            user_tag="数据库连接失败"
+                        )
                     raise RuntimeError(f"数据库连接失败, 重试{self.reconnect_retries}次后仍不可用: {e}") from None
                 time.sleep(1)  # 等待后重试
 
@@ -1570,6 +1612,20 @@ class Mysqlop(SQLutilop):
                 if self.__in_transaction:
                     self.logger.warning("关闭连接时有未提交的事务，执行回滚")
                     self.rollback()
+                
+                # 记录断开连接历史
+                if self.enable_history and self.__history:
+                    database = self.__selected_db or "N/A"
+                    disconnect_sql = f"-- DISCONNECT: Connection to {database} closed"
+                    
+                    self._record_sql_history(
+                        sql=disconnect_sql,
+                        params={"database": database},
+                        duration=0.0,
+                        status=SQLExecutionStatus.SUCCESS,
+                        user_tag="数据库断开连接"
+                    )
+                
                 self.connection_pool.release_connection(self.__connection)
                 self.logger.debug("MySQL连接已归还到连接池")
             finally:
@@ -1585,6 +1641,16 @@ class Mysqlop(SQLutilop):
             self.__connection.commit()
             self.__in_transaction = False
             self.logger.debug("事务已提交")
+            
+            # 记录事务提交历史
+            if self.enable_history and self.__history:
+                self._record_sql_history(
+                    sql="COMMIT TRANSACTION",
+                    params=None,
+                    duration=0.0,
+                    status=SQLExecutionStatus.SUCCESS,
+                    user_tag="事务提交"
+                )
 
     def rollback(self):
         """回滚事务"""
@@ -1592,6 +1658,16 @@ class Mysqlop(SQLutilop):
             self.__connection.rollback()
             self.__in_transaction = False
             self.logger.debug("事务已回滚")
+            
+            # 记录事务回滚历史
+            if self.enable_history and self.__history:
+                self._record_sql_history(
+                    sql="ROLLBACK TRANSACTION",
+                    params=None,
+                    duration=0.0,
+                    status=SQLExecutionStatus.SUCCESS,
+                    user_tag="事务回滚"
+                )
 
     def _begin_transaction(self):
         """开始事务"""
@@ -1788,11 +1864,41 @@ class Mysqlop(SQLutilop):
 
             # 重新连接
             self.connect()
+            
+            # 记录数据库切换历史（如果connect中未记录）
+            if self.enable_history and self.__history:
+                from .sqlcore import SQLExecutionStatus
+                # 检查是否已有CONNECT记录，避免重复
+                recent_history = self.__history.get_all_records()
+                has_connect_record = any(
+                    r.sql == "CONNECT" and r.database == dbname 
+                    for r in recent_history[-5:]  # 检查最近5条
+                )
+                if not has_connect_record:
+                    self._record_sql_history(
+                        sql=f"USE {self._escape_identifier(dbname)}",
+                        params={"from_database": old_db, "to_database": dbname},
+                        duration=0.0,
+                        status=SQLExecutionStatus.SUCCESS,
+                        user_tag=f"切换数据库从{old_db}到{dbname}"
+                    )
 
         except Exception as e:
             # 恢复原来的数据库设置
             self.__selected_db = old_db
             self.logger.error(f"切换数据库失败: {e}")
+            
+            # 记录切换失败历史
+            if self.enable_history and self.__history:
+                from .sqlcore import SQLExecutionStatus
+                self._record_sql_history(
+                    sql=f"USE {self._escape_identifier(dbname)}",
+                    params={"from_database": old_db, "to_database": dbname},
+                    duration=0.0,
+                    status=SQLExecutionStatus.ERROR,
+                    error_message=str(e),
+                    user_tag=f"切换数据库失败"
+                )
             raise RuntimeError(f"无法切换到数据库 {dbname}: {e}") from None
 
     def select_table(self, tablename: str):
@@ -1948,12 +2054,19 @@ class Mysqlop(SQLutilop):
             dbname: 需要创建的数据库名
             bool_autoselect: 是否自动选择该数据库
         """
-        # 注入sql检验
+        # 注入sql检验 - 严格白名单校验
         if not re.match(r'^[a-zA-Z0-9_$#@]+$', dbname):
             self.logger.error(f"数据库名[{dbname}]不合法, 请使用以下符号: 字母、数字、下划线、美元符号、井号、@")
             raise ValueError(f'数据库名[{dbname}]不合法, 请使用以下符号: 字母、数字、下划线、美元符号、井号、@')
+        
+        # 额外安全检查：防止SQL注入关键词
+        forbidden_keywords = [';', '--', '/*', '*/', 'DROP', 'DELETE', 'UPDATE', 'INSERT']
+        if any(keyword in dbname.upper() for keyword in forbidden_keywords):
+            self.logger.error(f"数据库名[{dbname}]包含非法关键词")
+            raise ValueError(f'数据库名[{dbname}]包含非法关键词')
 
-        self._execute_sql(f"CREATE DATABASE IF NOT EXISTS `{dbname}` CHARACTER SET utf8 COLLATE utf8_general_ci",
+        safe_db = self._escape_identifier(dbname)
+        self._execute_sql(f"CREATE DATABASE IF NOT EXISTS {safe_db} CHARACTER SET utf8 COLLATE utf8_general_ci",
                           user_tag=f"创建数据库{dbname}")
         self.logger.info(f"MySQL数据库[{dbname}]创建成功")
         if bool_autoselect:
@@ -1966,7 +2079,13 @@ class Mysqlop(SQLutilop):
         Args:
             dbname: 需要删除的数据库名
         """
+        # 安全校验
+        if not re.match(r'^[a-zA-Z0-9_$#@]+$', dbname):
+            self.logger.error(f"数据库名[{dbname}]不合法")
+            raise ValueError(f'数据库名[{dbname}]不合法')
+        
         safe_db = self._escape_identifier(dbname)
+        self.logger.warning(f"即将删除数据库: {dbname}")  # 提升日志级别
         self._execute_sql(f"DROP DATABASE IF EXISTS {safe_db}", user_tag=f"删除数据库{dbname}")
         self.logger.info(f"MySQL数据库[{dbname}]删除成功")
         if dbname == self.__selected_db:
@@ -2040,7 +2159,7 @@ class Mysqlop(SQLutilop):
             **kwargs
         )
 
-        print(sql)
+        self.logger.debug(f"建表SQL: {sql}")
 
         # 执行SQL
         self._execute_sql(sql, user_tag=f"创建表{tablename}")
@@ -2263,8 +2382,14 @@ class Mysqlop(SQLutilop):
         tablename = tablename or self.__selected_table
         if not tablename:
             raise ValueError("未指定表名")
+        
+        # 安全校验
+        if not re.match(r'^[a-zA-Z0-9_]+$', tablename):
+            self.logger.error(f"表名[{tablename}]不合法")
+            raise ValueError(f'表名[{tablename}]不合法')
 
         safe_table = self._escape_identifier(tablename)
+        self.logger.warning(f"即将清空表数据: {tablename}")  # 提升日志级别
         sql = f"TRUNCATE TABLE {safe_table}"
         self._execute_sql(sql, user_tag=f"清空表{tablename}")
         self.logger.info(f"表 {tablename} 已清空")
@@ -2324,7 +2449,7 @@ class Mysqlop(SQLutilop):
         分析查询执行计划并提供优化建议
 
         Args:
-            sql: SQL查询语句
+            sql: SQL查询语句（应为参数化后的SQL）
             args: 查询参数
 
         Returns:
@@ -2332,6 +2457,10 @@ class Mysqlop(SQLutilop):
         """
         self._ensure_connection()
 
+        # 安全检查：确保传入的是SELECT语句
+        if not sql.strip().upper().startswith('SELECT'):
+            raise ValueError("analyze_query仅支持SELECT语句")
+        
         # 获取执行计划
         explain_sql = f"EXPLAIN {sql}"
         explain_result = self._query_sql(explain_sql, args, user_tag="查询分析")
@@ -2547,14 +2676,9 @@ class Mysqlop(SQLutilop):
             host: 用户登录主机，默认localhost
         """
         host = host or "localhost"
-        # 使用参数化查询，%s 占位符由 execute 安全处理
-        # sql = "ALTER USER %s@%s IDENTIFIED BY %s"
-        # 注意：用户名和主机名也需要转义，但 ALTER USER 的语法要求它们是标识符，不能参数化。
-        # 为安全起见，我们对用户名和主机名进行标识符转义
-        safe_user = self._escape_identifier(username)
-        safe_host = self._escape_identifier(host)
-        sql = f"ALTER USER {safe_user}@{safe_host} IDENTIFIED BY %s"
-        self._execute_sql(sql, (new_password,), user_tag="修改用户密码")
+        # 参数化查询：用户名和主机作为字符串参数，MySQL会自动添加单引号
+        sql = "ALTER USER %s@%s IDENTIFIED BY %s"
+        self._execute_sql(sql, (username, host, new_password), user_tag="修改用户密码")
         self.logger.info("修改密码成功")
 
     def get_permissions(self):
@@ -2597,7 +2721,19 @@ class Mysqlop(SQLutilop):
             return permissions
 
         result = self._query_sql(sql, user_tag="获取当前用户权限")
-        privileges = [row[f"Grants for {self.adapter.config['user']}@%"] for row in result]
+        print(result)
+        if not result:
+            return {}
+        # 动态获取列名：取第一行的第一个键（因为 SHOW GRANTS 只有一列）
+        # 或者查找以 "Grants for" 开头的键
+        grant_key = None
+        for key in result[0].keys():
+            if key.startswith("Grants for"):
+                grant_key = key
+                break
+        if grant_key is None:
+            grant_key = list(result[0].keys())[0]  # fallback
+        privileges = [row[grant_key] for row in result]
         self.logger.info("查询当前用户权限成功")
         return parse_grants(privileges)
 
@@ -2795,8 +2931,8 @@ class Mysqlop(SQLutilop):
 
             # 获取SQL预览（截断长SQL）
             sql_preview = record['sql']
-            if len(sql_preview) > 50:
-                sql_preview = sql_preview[:47] + "..."
+            if len(sql_preview) > 100:
+                sql_preview = sql_preview[:97] + "..."
 
             # 打印记录
             print(f"  {i}. [{exec_time.strftime('%H:%M:%S')}] {status_icon} "

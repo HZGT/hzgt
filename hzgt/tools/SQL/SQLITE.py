@@ -1,13 +1,8 @@
 
-
-
-
 # -*- coding: utf-8 -*-
 import csv
-import os
 import re
 import sqlite3
-from contextlib import contextmanager
 from enum import Enum
 from logging import Logger
 from typing import Dict, Optional, Any, List, Tuple, Union
@@ -670,8 +665,6 @@ class SQLiteop(SQLutilop):
         self.adapter = SQLiteAdapter(db_name, self.logger)
         self.query_builder = SQLiteQueryBuilder(self.logger)
 
-        self.__connection = None
-        self.__in_transaction = False
         self.__selected_table = None
 
         self.logger.info(f'SQLite工具初始化完成，数据库: {db_name}')
@@ -685,90 +678,6 @@ class SQLiteop(SQLutilop):
         """
         return set_log("hzgt.sqlite", fpath="logs", fname="sqlite")
 
-    def __enter__(self):
-        """上下文管理器入口"""
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器出口"""
-        if exc_type is not None:
-            self.logger.error(f"发生异常: {exc_val}")
-            self.rollback()
-        elif self.__in_transaction:
-            self.commit()
-        self.close()
-
-    def connect(self):
-        """建立数据库连接"""
-        try:
-            self.__connection = self.adapter.get_connection()
-            self.logger.info(f"SQLite连接成功: {self.db_name}")
-        except Exception as e:
-            self.logger.error(f"连接失败: {e}")
-            raise RuntimeError(f"数据库连接失败: {e}") from None
-
-    def start(self):
-        """建立数据库连接"""
-        self.connect()
-
-    def close(self):
-        """关闭数据库连接"""
-        if self.__connection:
-            try:
-                if self.__in_transaction:
-                    self.logger.warning("关闭连接时有未提交的事务，执行回滚")
-                    self.rollback()
-                self.adapter.close_connection(self.__connection)
-                self.logger.debug("SQLite连接已关闭")
-            finally:
-                self.__connection = None
-
-    def disconnect(self):
-        """关闭数据库连接"""
-        self.close()
-
-    def commit(self):
-        """提交事务"""
-        if self.__connection and self.__in_transaction:
-            self.__connection.commit()
-            self.__in_transaction = False
-            self.logger.debug("事务已提交")
-
-    def rollback(self):
-        """回滚事务"""
-        if self.__connection and self.__in_transaction:
-            self.__connection.rollback()
-            self.__in_transaction = False
-            self.logger.debug("事务已回滚")
-
-    def _begin_transaction(self):
-        """开始事务"""
-        if not self.__connection:
-            self.connect()
-        if not self.__in_transaction:
-            self.__connection.execute("BEGIN")
-            self.__in_transaction = True
-            self.logger.debug("开始新事务")
-
-    def _end_transaction(self, commit: bool = True):
-        """结束事务"""
-        if commit:
-            self.commit()
-        else:
-            self.rollback()
-
-    @contextmanager
-    def transaction(self):
-        """事务上下文管理器"""
-        self._begin_transaction()
-        try:
-            yield
-            self._end_transaction(commit=True)
-        except Exception as e:
-            self._end_transaction(commit=False)
-            raise RuntimeError(e) from None
-
     def execute(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Any:
         """
         执行SQL语句
@@ -780,61 +689,48 @@ class SQLiteop(SQLutilop):
         Returns:
             执行结果
         """
-        if not self.__connection:
-            self.connect()
-
+        connection = None
         try:
-            cursor = self.__connection.cursor()
-            try:
-                cursor.execute(sql, args or ())
-                if not self.__in_transaction and sql.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
-                    self.__connection.commit()
-
-                # 检查是否为SELECT查询有结果
-                if cursor.description:
-                    columns = [col[0] for col in cursor.description]
-                    results = []
-                    for row in cursor.fetchall():
-                        if isinstance(row, sqlite3.Row):
-                            results.append(dict(row))
-                        else:
-                            results.append({columns[i]: row[i] for i in range(len(columns))})
-                    return results
-                else:
-                    return cursor.rowcount  # 返回影响行数
-            finally:
-                cursor.close()
-        except sqlite3.Error as e:
-            if not self.__in_transaction:
-                self.__connection.rollback()
+            connection = self.adapter.get_connection()
+            results, rowcount = self.adapter.execute_query(connection, sql, args)
+            if sql.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+                connection.commit()
+            return results if results else rowcount
+        except Exception as e:
+            if connection:
+                connection.rollback()
             self.logger.error(f"执行SQL失败: {sql} | 参数: {args} | 错误: {e}")
             raise RuntimeError(e) from None
+        finally:
+            if connection:
+                self.adapter.close_connection(connection)
 
     def executemany(self, sql: str, args_list: List[Union[tuple, dict]]) -> Any:
         """批量执行SQL语句"""
         if not args_list:
             return None
 
-        if not self.__connection:
-            self.connect()
-
+        connection = None
         try:
-            cursor = self.__connection.cursor()
+            connection = self.adapter.get_connection()
+            cursor = connection.cursor()
             try:
                 result = cursor.executemany(sql, args_list)
-                if not self.__in_transaction:
-                    self.__connection.commit()
+                connection.commit()
                 return result
             finally:
                 cursor.close()
-        except sqlite3.Error as e:
-            if not self.__in_transaction:
-                self.__connection.rollback()
+        except Exception as e:
+            if connection:
+                connection.rollback()
             self.logger.error(f"执行批量SQL失败: {sql} | 错误: {e}")
             raise RuntimeError(e) from None
+        finally:
+            if connection:
+                self.adapter.close_connection(connection)
 
-    def query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
-              bool_dict: bool = False) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+    def __query(self, sql: str, args: Optional[Union[tuple, dict, list]] = None,
+                bool_dict: bool = False) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """
         执行查询并返回结果集
 
@@ -846,39 +742,25 @@ class SQLiteop(SQLutilop):
         Returns:
             查询结果列表，每项为一个字典
         """
-        if not self.__connection:
-            self.connect()
-
-        cursor = None
+        connection = None
         try:
-            cursor = self.__connection.cursor()
-            cursor.execute(sql, args or ())
-
-            # 获取列名
-            columns = [col[0] for col in cursor.description]
-
-            # 转换结果为字典列表
-            results = []
-            for row in cursor.fetchall():
-                if isinstance(row, sqlite3.Row):
-                    results.append(dict(row))
-                else:
-                    results.append({columns[i]: row[i] for i in range(len(columns))})
-
+            connection = self.adapter.get_connection()
+            results, _ = self.adapter.execute_query(connection, sql, args)
+            
             if bool_dict:
                 if not results:
                     return {}
                 return {key: [item[key] for item in results] for key in results[0]}
 
             return results
-        except sqlite3.Error as e:
+        except Exception as e:
             self.logger.error(f"执行查询失败: {sql} | 错误: {e}")
             raise RuntimeError(e) from None
         finally:
-            if cursor:
-                cursor.close()
+            if connection:
+                self.adapter.close_connection(connection)
 
-    def query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Optional[Dict[str, Any]]:
+    def __query_one(self, sql: str, args: Optional[Union[tuple, dict, list]] = None) -> Optional[Dict[str, Any]]:
         """
         查询单条记录
 
@@ -889,12 +771,12 @@ class SQLiteop(SQLutilop):
         Returns:
             单条记录字典，未找到时返回None
         """
-        results = self.query(sql, args)
+        results = self.__query(sql, args)
         return results[0] if results else None
 
     # 获取所有的表名
     def get_tables(self) -> list[str]:
-        return self.query("SELECT name FROM sqlite_master WHERE type='table'", bool_dict=True)["name"]
+        return self.__query("SELECT name FROM sqlite_master WHERE type='table'", bool_dict=True)["name"]
 
     def select_table(self, table_name: str):
         """
@@ -916,7 +798,7 @@ class SQLiteop(SQLutilop):
         Returns:
             表是否存在
         """
-        result = self.query_one(
+        result = self.__query_one(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
             (table_name,)
         )
@@ -935,7 +817,7 @@ class SQLiteop(SQLutilop):
         if not table_name:
             raise ValueError("未指定表名")
 
-        result = self.query(f"PRAGMA table_info({self._escape_identifier(table_name)})")
+        result = self.__query(f"PRAGMA table_info({self._escape_identifier(table_name)})")
         return [row["name"] for row in result]
 
     def column_exists(self, table_name: str, column_name: str) -> bool:
@@ -977,21 +859,17 @@ class SQLiteop(SQLutilop):
             **kwargs
         )
 
-        if not self.__connection:
-            self.connect()
-
         # 创建表
         try:
-            with self.transaction():
-                self.execute(sql)
+            self.execute(sql)
 
-                # 创建索引
-                for index_sql in index_sqls:
-                    self.execute(index_sql)
+            # 创建索引
+            for index_sql in index_sqls:
+                self.execute(index_sql)
 
             self.logger.info(f"表 {table_name} 创建成功", stacklevel=4)
             self.select_table(table_name)
-        except sqlite3.Error as e:
+        except Exception as e:
             self.logger.error(f"创建表 {table_name} 失败: {e}")
             raise RuntimeError(e) from None
 
@@ -1036,50 +914,57 @@ class SQLiteop(SQLutilop):
             self.logger.error("插入数据失败: record 参数不能为空")
             raise ValueError("record 参数不能为空")
 
-        # 构建SQL
-        sql, params = self.query_builder.build_insert(
-            tablename=table_name,
-            data=record,
-            **kwargs
-        )
-
-        if not self.__connection:
-            self.connect()
-
         # 执行插入
         if isinstance(record, list):  # 批量插入
             rows = []
-            for i in range(len(record)):
-                item = record[i]
+            for item in record:
                 values = [item.get(field) for field in record[0].keys()]
                 rows.append(tuple(values))
 
-            cursor = self.__connection.cursor()
-            try:
-                cursor.executemany(sql, rows)
-                if not self.__in_transaction:
-                    self.__connection.commit()
-                self.logger.info(f"成功批量插入 {len(rows)} 条记录到表 {table_name}")
+            # 构建SQL
+            sql, _ = self.query_builder.build_insert(
+                tablename=table_name,
+                data=record[0],
+                **kwargs
+            )
 
-                if return_id:
-                    # SQLite不支持批量插入返回ID
-                    self.logger.warning("SQLite不支持批量插入时返回ID")
-                    return None
-            finally:
-                cursor.close()
+            self.executemany(sql, rows)
+            self.logger.info(f"成功批量插入 {len(rows)} 条记录到表 {table_name}")
+
+            if return_id:
+                # SQLite不支持批量插入返回ID
+                self.logger.warning("SQLite不支持批量插入时返回ID")
+                return None
         else:  # 单条插入
-            cursor = self.__connection.cursor()
-            try:
-                cursor.execute(sql, params)
-                if not self.__in_transaction:
-                    self.__connection.commit()
-                self.logger.info(f"成功插入数据到表 {table_name}")
+            # 构建SQL
+            sql, params = self.query_builder.build_insert(
+                tablename=table_name,
+                data=record,
+                **kwargs
+            )
 
-                if return_id:
-                    last_id = cursor.lastrowid
-                    return last_id
+            connection = None
+            try:
+                connection = self.adapter.get_connection()
+                cursor = connection.cursor()
+                try:
+                    cursor.execute(sql, params)
+                    connection.commit()
+                    self.logger.info(f"成功插入数据到表 {table_name}")
+
+                    if return_id:
+                        last_id = cursor.lastrowid
+                        return last_id
+                finally:
+                    cursor.close()
+            except Exception as e:
+                if connection:
+                    connection.rollback()
+                self.logger.error(f"插入数据失败: {e}")
+                raise RuntimeError(e) from None
             finally:
-                cursor.close()
+                if connection:
+                    self.adapter.close_connection(connection)
 
         return None
 
@@ -1118,7 +1003,7 @@ class SQLiteop(SQLutilop):
         )
 
         # 执行查询
-        return self.query(sql, params, bool_dict)
+        return self.__query(sql, params, bool_dict)
 
     def update(self, table_name: str = '', update_values: Dict[str, Any] = None,
                conditions: Dict = None, **kwargs):
@@ -1216,7 +1101,7 @@ class SQLiteop(SQLutilop):
         )
 
         # 执行查询
-        return self.query(sql, params, bool_dict)
+        return self.__query(sql, params, bool_dict)
 
     def batch_insert(self, table_name: str, records: List[Dict[str, Any]],
                      batch_size: int = 1000, **kwargs):
@@ -1259,7 +1144,7 @@ class SQLiteop(SQLutilop):
         """
         return self.query_builder.escape_identifier(identifier)
 
-    def enable_wal_mode(self) -> None:
+    def enable_wal(self) -> None:
         """
         启用 WAL 模式（Write-Ahead Logging）, 提高并发性能.
         """
@@ -1283,9 +1168,7 @@ class SQLiteop(SQLutilop):
                 if not self.column_exists(table_name, col):
                     self.execute(f"ALTER TABLE {self._escape_identifier(table_name)} ADD COLUMN {col} {dtype}")
                     self.logger.info(f"已添加列 {col} 到表 {table_name}")
-            if not self.__in_transaction:
-                self.__connection.commit()
-        except sqlite3.Error as e:
+        except Exception as e:
             self.logger.error(f"数据库迁移失败: {e}")
             raise RuntimeError(e) from None
 
@@ -1359,14 +1242,19 @@ class SQLiteop(SQLutilop):
             with open(script_path, 'r') as f:
                 sql_script = f.read()
 
-            if not self.__connection:
-                self.connect()
-
-            self.__connection.executescript(sql_script)
-            if not self.__in_transaction:
-                self.__connection.commit()
-
-            self.logger.info(f"已执行 SQL 脚本: {script_path}")
+            connection = None
+            try:
+                connection = self.adapter.get_connection()
+                connection.executescript(sql_script)
+                connection.commit()
+                self.logger.info(f"已执行 SQL 脚本: {script_path}")
+            except Exception as e:
+                if connection:
+                    connection.rollback()
+                raise
+            finally:
+                if connection:
+                    self.adapter.close_connection(connection)
         except Exception as e:
             self.logger.error(f"执行 SQL 脚本失败: {e}")
             raise RuntimeError(e) from None
@@ -1378,15 +1266,19 @@ class SQLiteop(SQLutilop):
         Args:
             target_db: 目标数据库文件名
         """
-        if not self.__connection:
-            self.connect()
-
+        connection = None
+        target_conn = None
         try:
+            connection = self.adapter.get_connection()
             target_conn = sqlite3.connect(target_db)
             with target_conn:
-                self.__connection.backup(target_conn)
-            target_conn.close()
+                connection.backup(target_conn)
             self.logger.info(f"数据库已备份到 {target_db}")
-        except sqlite3.Error as e:
+        except Exception as e:
             self.logger.error(f"备份数据库失败: {e}")
             raise RuntimeError(e) from None
+        finally:
+            if target_conn:
+                target_conn.close()
+            if connection:
+                self.adapter.close_connection(connection)

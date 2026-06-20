@@ -55,22 +55,22 @@ class SQLutilop(ABC):
         self.close()
         return False  # 允许异常向上传播
 
-    @abstractmethod
+    # @abstractmethod
     def connect(self):
         """建立数据库连接"""
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def close(self):
         """关闭数据库连接"""
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def commit(self):
         """提交事务"""
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def rollback(self):
         """回滚事务"""
         pass
@@ -93,12 +93,12 @@ class SQLutilop(ABC):
             self._end_transaction(commit=False)
             raise e
 
-    @abstractmethod
+    # @abstractmethod
     def _begin_transaction(self):
         """开始事务（具体实现由子类提供）"""
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def _end_transaction(self, commit: bool = True):
         """
         结束事务

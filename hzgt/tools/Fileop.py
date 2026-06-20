@@ -1,5 +1,4 @@
 import base64
-import cgi
 import datetime
 import email
 import html
@@ -17,6 +16,8 @@ import urllib.parse
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingTCPServer, ThreadingMixIn
+
+from multipart import parse_form
 
 from .INI import readini
 from ..core.ipss import getip, get_server_urls, AddressFamily
@@ -140,23 +141,61 @@ def _ul_li_css(_ico_base64):
 
     li {{
         flex: 1 0 auto;
-        margin: 1%; /* 增加li元素之间的间距 */
+        margin: 1%;
         color: blue;
-        background-color: #c0c0c0; /* 背景色 */
-        border-style: dotted; /* 使用虚线边框，自适应长度 */
+        background-color: #c0c0c0;
+        border-style: dotted;
         border-color: gray;
-        border-radius: 8px; /* 边框的圆角半径 */
+        border-radius: 8px;
         display: flex;
-        cursor: pointer;
-        z-index: 0;
+        align-items: center;          /* 垂直居中 */
+        padding: 6px 12px;
+        gap: 10px;
+        flex-wrap: nowrap;
+        /* 去掉 justify-content，默认为 flex-start，使 a 靠左 */
     }}
 
     li a {{
-        display: block;
+        display: inline-block;        /* 保持内联，不独占一行 */
         padding: 3px;
         text-decoration: none;
+        font-size: 15px;
+        color: #000080;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 60%;              /* 防止文件名过长 */
+        flex-shrink: 1;
     }}
 
+    /* 文件信息（大小 + 修改时间），靠右显示 */
+    .file-info {{
+        font-size: 13px;
+        color: #333;
+        display: flex;
+        gap: 15px;
+        flex-shrink: 0;
+        align-items: center;
+        white-space: nowrap;
+        margin-left: auto;           /* 自动靠右 */
+    }}
+
+    /* 保留悬停和点击效果 */
+    li:hover {{
+        color: #ff6900;
+        background-color: #f0f000;
+        text-decoration: underline;
+        animation: li_hover_animation 1s;
+    }}
+    @keyframes li_hover_animation {{
+        from {{ background-color: #ffffff; }}
+        to {{ background-color: #f0f000; }}
+    }}
+
+    li:active {{
+        color: #0066cc;
+        background-color: #c0c0c0;
+    }}
 """
 
 
@@ -200,17 +239,6 @@ def _ul_li_js():
         }
     });
 
-    document.addEventListener('DOMContentLoaded', function () {
-        const listItems = document.querySelectorAll('ul.custom-list li');
-        listItems.forEach((item) => {
-            const text = item.textContent.trim();
-            if (text.endsWith('/')) {
-                item.classList.add('folder');
-            } else {
-                item.classList.add('file');
-            }
-        });
-    });
 
     document.addEventListener('DOMContentLoaded', function () {
         const h1Element = document.querySelector('div.header-container');
@@ -328,15 +356,11 @@ def _ul_li_js():
 
 
 def _list2ul_li(titlepath: str, _path: str, pathlist: list):
-    """
-    将列表转换为lu的li样式
-    :return:
-    """
     _r = []
     parts = titlepath.split('/')
     result = []
     current_path = ''
-    for part in parts:  # 处理标题样式
+    for part in parts:
         if part:
             current_path += '/' + part
             link = f"<a href='{current_path}' style='color: #40E0D0;'>{part}</a>"
@@ -348,18 +372,54 @@ def _list2ul_li(titlepath: str, _path: str, pathlist: list):
     else:
         end_title = common_part
 
-    for name in pathlist:  # 处理文件夹和文件li
+    for name in pathlist:
         fullname = os.path.join(_path, name)
         displayname = linkname = name
-        if os.path.isdir(fullname):
+        is_dir = os.path.isdir(fullname)
+        is_link = os.path.islink(fullname)
+
+        if is_dir:
             displayname = name + '/'
             linkname = name + '/'
-        if os.path.islink(fullname):
+        if is_link:
             displayname = name + "@"
-        _r.append("<li><a href='%s' style='color: #000080;'>%s</a></li>"
-                  % (urllib.parse.quote(linkname, encoding='utf-8',
-                                        errors='surrogatepass'),
-                     html.escape(displayname, quote=False)))
+
+        # 获取文件信息
+        try:
+            stat = os.stat(fullname)
+            mtime = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            if is_dir:
+                size_str = "文件夹"
+            else:
+                size_bytes = stat.st_size
+                if size_bytes < 1024:
+                    size_str = f"{size_bytes} B"
+                elif size_bytes < 1024 * 1024:
+                    size_str = f"{size_bytes / 1024:.2f} KB"
+                elif size_bytes < 1024 * 1024 * 1024:
+                    size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+                else:
+                    size_str = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+        except Exception:
+            mtime = "未知"
+            size_str = "未知"
+
+        link_href = urllib.parse.quote(linkname, encoding='utf-8', errors='surrogatepass')
+        link_text = html.escape(displayname, quote=False)
+
+        # ✅ 关键修改：根据 is_dir 设置 li 的 class
+        li_class = "folder" if is_dir else "file"
+        item_html = f"""
+        <li class="{li_class}">
+            <a href="{link_href}">{link_text}</a>
+            <div class="file-info">
+                <span>大小: {size_str}</span>
+                <span>修改: {mtime}</span>
+            </div>
+        </li>
+        """
+        _r.append(item_html)
+
     return f"""
     <div id="rtpath">{_path}</div>
     <div class="header-container">
@@ -375,13 +435,13 @@ def _list2ul_li(titlepath: str, _path: str, pathlist: list):
                     <input type="file" name="file" multiple id="file-input">
                 </div>
                 <div>
-                    <input type="submit" value="上传文件", class="upload-button">
+                    <input type="submit" value="上传文件" class="upload-button">
                     <span id="file-uploadpg">0%</span>
                 </div>
                 <progress id="uploadProgress" value="0" max="100"></progress>
             </form>
             <div>
-                <input type="submit" value="清除选择" class=“clear-input” id="clearselected">
+                <input type="submit" value="清除选择" class="clear-input" id="clearselected">
             </div>
         </div>
     </div>""", _r
@@ -392,6 +452,30 @@ def _convert_favicon_to_base64():
         data = f.read()
         b64_data = base64.b64encode(data).decode('utf-8')
     return b64_data
+
+
+# 1. 定义回调类来收集解析的数据
+class _FormDataCollector:
+    def __init__(self):
+        self.values = {}
+        self.files = {}
+
+    def on_field(self, name, value):
+        # 处理普通表单字段，name 和 value 通常是 bytes 或 str
+        if isinstance(name, bytes):
+            name = name.decode('utf-8')
+        if isinstance(value, bytes):
+            value = value.decode('utf-8')
+        self.values[name] = value
+
+    def on_file(self, name, file_object):
+        # 处理文件字段，name 通常是 bytes 或 str，file_object 包含文件数据
+        if isinstance(name, bytes):
+            name = name.decode('utf-8')
+        self.files[name] = file_object
+
+    def on_end(self):
+        pass
 
 
 class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -424,68 +508,80 @@ class __EnhancedHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            # 确保Content-Type存在且正确
+            # ---------- 1. 检查 Content-Type ----------
             content_type = self.headers.get('Content-Type', '')
             if not content_type.startswith('multipart/form-data'):
                 self.send_error(400, "Invalid Content-Type")
                 return
 
-            # 完整环境变量设置
-            environ = {
-                'REQUEST_METHOD': 'POST',
-                'CONTENT_TYPE': content_type,
-                'CONTENT_LENGTH': self.headers.get('Content-Length', 0)
-            }
+            # ---------- 2. 准备变量 ----------
+            # 用于存储普通字段（如 filename）
+            form_fields = {}
+            # 用于传递文件保存路径（在回调中设置）
+            save_path = None
 
-            # 解析FormData
-            form_data = cgi.FieldStorage(
-                fp=self.rfile,
-                headers=self.headers,
-                environ=environ,
-                keep_blank_values=True
-            )
+            # ---------- 3. 定义字段回调 ----------
+            def on_field(field):
+                # field.field_name 是 bytes，field.value 也是 bytes
+                name = field.field_name.decode('utf-8')
+                value = field.value.decode('utf-8')
+                form_fields[name] = value
 
-            # 获取文件字段和路径 ✅ 正确获取方式
-            if 'file' not in form_data or 'filename' not in form_data:
-                self.send_error(400, "Missing required fields")
-                return
+            # ---------- 4. 定义文件回调（流式写入，不占用大量内存） ----------
+            def on_file(file_obj):
+                nonlocal save_path  # 声明 nonlocal
 
-            file_item = form_data['file']  # 获取FieldStorage对象
-            filename = form_data.getvalue('filename', '')
+                # 获取原始文件名（bytes -> str）
+                raw_filename = file_obj.file_name.decode('utf-8') if file_obj.file_name else 'unnamed'
 
-            # 安全处理路径和文件名
-            safe_filename = os.path.basename(filename)
-            # 构建完整保存路径 ✅
-            # 获取当前请求路径（去除末尾的upload）
-            current_dir = self.path
-            if current_dir.endswith('upload'):
-                current_dir = current_dir[:-6]
-            base_path = self.translate_path(current_dir)
-            # 确保目录存在
-            os.makedirs(base_path, exist_ok=True)
-            save_path = os.path.join(base_path, safe_filename)
-            # print(self.path, base_path, self.translate_path(self.path), save_path)
+                # 如果表单中有 'filename' 字段，则使用它作为保存名，否则用原始文件名
+                save_name = form_fields.get('filename', raw_filename)
+                safe_filename = os.path.basename(save_name)  # 安全处理，防止路径遍历
 
-            # 写入文件（分块读取避免内存溢出）
-            if hasattr(file_item, 'file'):  # 检查是否为文件对象
-                with open(save_path, 'wb') as f:
+                # 构建保存目录
+                # 根据请求路径决定保存位置：如果路径以 '/upload' 结尾，则去除
+                current_dir = self.path
+                if current_dir.endswith('/upload'):
+                    current_dir = current_dir[:-7]  # 去掉 '/upload'
+                elif current_dir.endswith('upload'):
+                    current_dir = current_dir[:-6]  # 去掉 'upload'
+                base_path = self.translate_path(current_dir)
+                os.makedirs(base_path, exist_ok=True)
+
+                # 最终完整路径
+                full_path = os.path.join(base_path, safe_filename)
+                save_path = full_path  # 保存到外部变量，供后续使用
+
+                # 从 file_obj.file_object 读取并流式写入磁盘
+                # file_obj.file_object 是类文件对象（如 BytesIO 或临时文件）
+                file_obj.file_object.seek(0)  # 确保从开头读
+                with open(full_path, 'wb') as f:
                     while True:
-                        chunk = file_item.file.read(8192)
+                        chunk = file_obj.file_object.read(8192)  # 8KB 块
                         if not chunk:
                             break
                         f.write(chunk)
-            else:  # 处理小文件直接存储在内存中的情况
-                with open(save_path, 'wb') as f:
-                    f.write(file_item.value)
 
+            # ---------- 5. 调用解析函数 ----------
+            parse_form(self.headers, self.rfile, on_field, on_file)
+
+            # ---------- 6. 检查是否成功接收到文件 ----------
+            if save_path is None:
+                self.send_error(400, "No file uploaded")
+                return
+
+            # ---------- 7. 返回成功响应 ----------
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.end_headers()
-            self.wfile.write(f'成功上传文件: {safe_filename}'.encode('utf-8'))
+            # 成功消息
+            self.wfile.write(f'成功上传文件: {os.path.basename(save_path)}'.encode('utf-8'))
 
         except Exception as e:
-            self.send_error(500, f"服务器错误: {str(e)}")
+            # ---------- 8. 异常处理（避免编码错误） ----------
             print(f"上传错误: {traceback.format_exc()}")
+            # 发送简单的英文错误，避免 UnicodeEncodeError
+            self.send_error(500, "Internal Server Error")
 
     def send_head(self):
         path = self.translate_path(self.path)
@@ -795,12 +891,14 @@ def file_server(path: str = ".", host: str = None, port: int = 5001,
     # 生成并打印可访问的 URL 列表
     urls = get_server_urls(host=host, port=port, protocol=protocol, include_ipv4=True)
 
+    if urls:
+        print(f"{protocol.upper()} 服务可通过以下地址访问：")
+        for url in urls:
+            print(f"  {url}")
+    else:
+        print("未找到可访问的地址，请检查网络配置。")
+
     if bool_run:
-        if urls:
-            print(f"{protocol.upper()} 服务可通过以下地址访问：")
-            for url in urls:
-                print(f"  {url}")
-        else:
-            print("未找到可访问的地址，请检查网络配置。")
+
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, urls
