@@ -130,7 +130,9 @@ def __losf():
 @click.option("-pe", "--perm", default="elradfmwMT", type=click.STRING, help="选填- 权限", show_default=True)
 @click.option("-u", "--user", default=CURRENT_USERNAME, type=click.STRING, help="选填- 用户名", show_default=True)
 @click.option("-pw", "--password", default=CURRENT_USERNAME, type=click.STRING, help="选填- 密码", show_default=True)
-def ftps(directory, res, port, perm, user, password):
+@click.option("-rl", "--read-limit", default=20, type=click.INT, help="选填- 读取限制(单位 MB/s)", show_default=True)
+@click.option("-wl", "--write-limit", default=20, type=click.INT, help="选填- 写入限制(单位 MB/s)", show_default=True)
+def ftps(directory, res, port, perm, user, password, read_limit, write_limit):
     """
     FTP服务器端模块
 
@@ -171,11 +173,15 @@ def ftps(directory, res, port, perm, user, password):
     :param user: 用户名 默认计算机名
 
     :param password: 密码 默认计算机名
+
+    :param read_limit: 读取速度限制 默认 20 (单位 MB/s)
+
+    :param write_limit: 写入速度限制 默认 20 (单位 MB/s)
     """
     click.echo(f"工作目录: {directory}\n")
     fs = Ftpserver()
     fs.add_user(directory, user, password, perm=perm)
-    fs.start(res, port)
+    fs.start(res, port, read_limit=read_limit * 1024, write_limit=write_limit * 1024)
 
 
 # =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
