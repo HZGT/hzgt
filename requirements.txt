@@ -1,11 +1,8 @@
 click
-dotenv
-paho-mqtt
+paho_mqtt
+psutil
 pyftpdlib
 PyMySQL
-python-dotenv==1.2.2
-requests==2.33.0
-sqlalchemy
-psutil
+python-dotenv
 tabulate
-python-multipart
+tqdm
