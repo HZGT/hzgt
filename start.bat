@@ -1,4 +1,4 @@
 git add .
-git commit -m "fix "
+git commit -m "fdel SSH"
 git push
 pause

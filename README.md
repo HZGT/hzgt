@@ -29,7 +29,6 @@ hzgt/
 │   │   ├── SQLITE.py        # SQLite操作
 │   │   ├── __init__.py
 │   │   └── sqlhistory.py    # SQL历史记录
-│   ├── SQLs/                # SQL脚本
 │   ├── FTP.py               # FTP服务端和客户端
 │   ├── FileServer.py        # 文件服务器
 │   ├── INI.py               # INI文件操作
